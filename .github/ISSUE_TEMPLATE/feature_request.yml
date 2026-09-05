@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest a focused improvement to the supported controller.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Which user problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful behavior change.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Which workarounds or alternatives have you tried?
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware impact
+      description: Note any board, memory, storage, power, display, touch, or antenna implications.
+    validations:
+      required: true

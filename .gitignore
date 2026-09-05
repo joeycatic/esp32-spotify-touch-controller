@@ -6,7 +6,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .superpowers/
+.worktrees/
 .env
 secrets.json
 provisioning.json
-

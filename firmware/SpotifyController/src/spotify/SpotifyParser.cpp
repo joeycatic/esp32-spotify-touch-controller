@@ -238,4 +238,32 @@ SpotifyError parseSpotifyError(int status, const std::string &json,
   return result;
 }
 
+SpotifyError parseOAuthTokenError(int status, const std::string &json,
+                                  uint32_t retry_after_seconds) {
+  SpotifyError result;
+  result.http_status = status;
+  result.retry_after_ms = retry_after_seconds * 1000U;
+  JsonDocument document;
+  if (!json.empty() && !deserializeJson(document, json)) {
+    result.reason = text(document["error"]);
+    result.user_message = text(document["error_description"]);
+  }
+  if (result.reason == "invalid_grant" || result.reason == "invalid_client") {
+    result.category = ErrorCategory::Authorization;
+  } else if (status == 429) {
+    result.category = ErrorCategory::RateLimited;
+  } else if (status <= 0 || status >= 500 ||
+             result.reason == "temporarily_unavailable") {
+    result.category = ErrorCategory::Transient;
+  } else {
+    result.category = ErrorCategory::Permanent;
+  }
+  if (result.user_message.empty()) {
+    result.user_message = result.category == ErrorCategory::Authorization
+                              ? "Spotify login has expired"
+                              : "Spotify authorization request failed";
+  }
+  return result;
+}
+
 } // namespace spotctl

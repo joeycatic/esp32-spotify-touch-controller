@@ -54,4 +54,28 @@ ErrorCategory classifySpotifyError(int http_status, const std::string &) {
   return ErrorCategory::Permanent;
 }
 
+bool commandAccepted(bool service_running, bool wifi_connected,
+                     bool rate_limited) {
+  return service_running && wifi_connected && !rate_limited;
+}
+
+void applyOptimisticPlayback(PlaybackSnapshot &playback,
+                             PlaybackMutation mutation) {
+  switch (mutation) {
+  case PlaybackMutation::TogglePlaying:
+    playback.is_playing = !playback.is_playing;
+    break;
+  case PlaybackMutation::ToggleShuffle:
+    playback.shuffle = !playback.shuffle;
+    break;
+  case PlaybackMutation::CycleRepeat:
+    playback.repeat = playback.repeat == RepeatMode::Off
+                          ? RepeatMode::Context
+                          : (playback.repeat == RepeatMode::Context
+                                 ? RepeatMode::Track
+                                 : RepeatMode::Off);
+    break;
+  }
+}
+
 } // namespace spotctl

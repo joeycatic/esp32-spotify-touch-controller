@@ -54,7 +54,8 @@ private:
   lv_obj_t *makeButton(lv_obj_t *parent, const char *symbol, lv_coord_t x,
                        lv_coord_t y, lv_coord_t width, lv_coord_t height,
                        lv_event_cb_t callback);
-  void send(UiCommand command);
+  bool send(UiCommand command);
+  void setOffline(bool offline);
   void noteInteraction();
   void showSetup(const char *title, const char *detail);
   void showPlayer();
@@ -68,7 +69,7 @@ private:
   void rebuildPlaylistRows();
   void rebuildTrackRows();
   void rebuildDeviceRows();
-  void updatePlaybackWidgets(const lv_img_dsc_t *new_artwork = nullptr);
+  void updatePlaybackWidgets();
   void updateMiniPlayer();
   void showMessage(const std::string &message, bool error = false);
   void destroyMessage();
@@ -85,10 +86,11 @@ private:
   bool tracks_are_liked_{false};
   std::string track_list_title_;
   PlaylistSummary play_only_playlist_;
-  const lv_img_dsc_t *artwork_{nullptr};
+  ArtworkHandle artwork_;
   uint32_t last_interaction_ms_{0};
   uint32_t message_until_ms_{0};
   bool dimmed_{false};
+  bool offline_{false};
   bool provisioning_screen_{false};
   uint8_t calibration_step_{0};
 
@@ -107,6 +109,7 @@ private:
   lv_obj_t *mini_title_{nullptr};
   lv_obj_t *mini_play_label_{nullptr};
   lv_obj_t *message_label_{nullptr};
+  lv_obj_t *connection_badge_{nullptr};
   lv_obj_t *calibration_target_{nullptr};
   lv_obj_t *calibration_label_{nullptr};
 };

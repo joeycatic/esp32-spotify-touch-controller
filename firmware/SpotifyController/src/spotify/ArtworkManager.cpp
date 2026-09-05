@@ -21,6 +21,12 @@ constexpr uint16_t kMaximumDimension = 640;
 
 ArtworkManager *ArtworkManager::decoding_instance_ = nullptr;
 
+ArtworkFrame::~ArtworkFrame() {
+  if (pixels != nullptr) {
+    heap_caps_free(pixels);
+  }
+}
+
 ArtworkManager::ArtworkManager() {
   secure_client_.setCACertBundle(
       spotify_art_crt_bundle_start,
@@ -94,77 +100,69 @@ bool ArtworkManager::download(const std::string &url, uint8_t *&data,
   return true;
 }
 
-bool ArtworkManager::decode(uint8_t *jpeg, size_t length, Slot &slot) {
+ArtworkHandle ArtworkManager::decode(uint8_t *jpeg, size_t length) {
   uint16_t width = 0;
   uint16_t height = 0;
   if (TJpgDec.getJpgSize(&width, &height, jpeg, length) != JDR_OK || width == 0 ||
       height == 0 || width > kMaximumDimension || height > kMaximumDimension) {
-    return false;
+    return {};
   }
-  uint16_t *new_pixels = static_cast<uint16_t *>(heap_caps_malloc(
+
+  ArtworkHandle frame = std::make_shared<ArtworkFrame>();
+  frame->pixels = static_cast<uint16_t *>(heap_caps_malloc(
       static_cast<size_t>(width) * height * sizeof(uint16_t), MALLOC_CAP_SPIRAM));
-  if (new_pixels == nullptr) {
-    return false;
+  if (frame->pixels == nullptr) {
+    return {};
   }
-  if (slot.pixels != nullptr) {
-    heap_caps_free(slot.pixels);
-  }
-  slot.pixels = new_pixels;
-  slot.width = width;
-  slot.height = height;
-  decode_slot_ = &slot;
+  frame->width = width;
+  frame->height = height;
+  decode_frame_ = frame.get();
   decoding_instance_ = this;
   const JRESULT result = TJpgDec.drawJpg(0, 0, jpeg, length);
   decoding_instance_ = nullptr;
-  decode_slot_ = nullptr;
+  decode_frame_ = nullptr;
   if (result != JDR_OK) {
-    heap_caps_free(slot.pixels);
-    slot.pixels = nullptr;
-    return false;
+    return {};
   }
 
-  slot.image.header.always_zero = 0;
-  slot.image.header.cf = LV_IMG_CF_TRUE_COLOR;
-  slot.image.header.w = width;
-  slot.image.header.h = height;
-  slot.image.data_size = static_cast<uint32_t>(width) * height * sizeof(uint16_t);
-  slot.image.data = reinterpret_cast<const uint8_t *>(slot.pixels);
-  return true;
+  frame->image.header.always_zero = 0;
+  frame->image.header.cf = LV_IMG_CF_TRUE_COLOR;
+  frame->image.header.w = width;
+  frame->image.header.h = height;
+  frame->image.data_size =
+      static_cast<uint32_t>(width) * height * sizeof(uint16_t);
+  frame->image.data = reinterpret_cast<const uint8_t *>(frame->pixels);
+  return frame;
 }
 
 bool ArtworkManager::jpegBlock(int16_t x, int16_t y, uint16_t width,
                                uint16_t height, uint16_t *bitmap) {
   ArtworkManager *manager = decoding_instance_;
-  if (manager == nullptr || manager->decode_slot_ == nullptr) {
+  if (manager == nullptr || manager->decode_frame_ == nullptr) {
     return false;
   }
-  Slot &slot = *manager->decode_slot_;
-  if (x < 0 || y < 0 || x + width > slot.width || y + height > slot.height) {
+  ArtworkFrame &frame = *manager->decode_frame_;
+  if (x < 0 || y < 0 || x + width > frame.width ||
+      y + height > frame.height) {
     return false;
   }
   for (uint16_t row = 0; row < height; ++row) {
-    std::memcpy(slot.pixels + static_cast<size_t>(y + row) * slot.width + x,
+    std::memcpy(frame.pixels + static_cast<size_t>(y + row) * frame.width + x,
                 bitmap + static_cast<size_t>(row) * width,
                 static_cast<size_t>(width) * sizeof(uint16_t));
   }
   return true;
 }
 
-const lv_img_dsc_t *ArtworkManager::load(const std::string &url) {
+ArtworkHandle ArtworkManager::load(const std::string &url) {
   uint8_t *jpeg = nullptr;
   size_t length = 0;
   if (!download(url, jpeg, length)) {
-    return nullptr;
+    return {};
   }
-  const uint8_t target = active_slot_ == 0 ? 1 : 0;
-  const bool decoded = decode(jpeg, length, slots_[target]);
+  ArtworkHandle decoded = decode(jpeg, length);
   heap_caps_free(jpeg);
-  if (!decoded) {
-    return nullptr;
-  }
-  active_slot_ = target;
-  return &slots_[active_slot_].image;
+  return decoded;
 }
 
 } // namespace spotctl
-

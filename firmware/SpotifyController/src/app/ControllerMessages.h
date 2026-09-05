@@ -1,12 +1,11 @@
 #pragma once
 
-#include <lvgl.h>
-
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "../core/Models.h"
+#include "../spotify/ArtworkFrame.h"
 
 namespace spotctl {
 
@@ -58,7 +57,7 @@ struct NetworkEvent {
   std::vector<TrackSummary> tracks;
   std::vector<PlaybackDevice> devices;
   SpotifyError error;
-  const lv_img_dsc_t *artwork{nullptr};
+  ArtworkHandle artwork;
   bool replace{false};
   bool has_more{false};
   bool liked{false};
@@ -67,4 +66,3 @@ struct NetworkEvent {
 };
 
 } // namespace spotctl
-

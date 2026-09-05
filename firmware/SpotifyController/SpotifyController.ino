@@ -90,6 +90,11 @@ void loop() {
     spotctl::NetworkEvent event{spotctl::NetworkEventType::Status};
     while (network_service.pollEvent(event)) {
       ui.handle(event);
+      if (event.type == spotctl::NetworkEventType::AuthorizationRequired) {
+        provisioning_mode = true;
+        provisioner.begin();
+        break;
+      }
     }
   }
   delay(2);

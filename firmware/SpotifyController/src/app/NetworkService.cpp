@@ -3,6 +3,8 @@
 #include <WiFi.h>
 #include <time.h>
 
+#include <algorithm>
+
 #include "../core/RuntimePolicy.h"
 
 namespace spotctl {
@@ -33,7 +35,10 @@ bool NetworkService::begin(const DeviceConfig &config) {
 }
 
 bool NetworkService::enqueue(const UiCommand &command) {
-  if (!running_ || mutex_ == nullptr ||
+  const bool wifi_connected = WiFi.status() == WL_CONNECTED;
+  if (!commandAccepted(running_, wifi_connected,
+                       !accepting_commands_.load(std::memory_order_acquire)) ||
+      mutex_ == nullptr ||
       xSemaphoreTake(mutex_, pdMS_TO_TICKS(20)) != pdTRUE) {
     return false;
   }
@@ -43,6 +48,15 @@ bool NetworkService::enqueue(const UiCommand &command) {
   commands_.push_back(command);
   xSemaphoreGive(mutex_);
   return true;
+}
+
+void NetworkService::clearCommands() {
+  if (mutex_ == nullptr ||
+      xSemaphoreTake(mutex_, pdMS_TO_TICKS(20)) != pdTRUE) {
+    return;
+  }
+  commands_.clear();
+  xSemaphoreGive(mutex_);
 }
 
 bool NetworkService::pollEvent(NetworkEvent &event) {
@@ -76,6 +90,14 @@ bool NetworkService::popCommand(UiCommand &command) {
 void NetworkService::pushEvent(NetworkEvent event) {
   if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(50)) != pdTRUE) {
     return;
+  }
+  if (event.type == NetworkEventType::Playback) {
+    events_.erase(std::remove_if(events_.begin(), events_.end(),
+                                 [](const NetworkEvent &queued) {
+                                   return queued.type ==
+                                          NetworkEventType::Playback;
+                                 }),
+                  events_.end());
   }
   if (events_.size() >= kMaximumQueuedMessages) {
     events_.pop_front();
@@ -127,6 +149,8 @@ void NetworkService::run() {
     event.error = error;
     pushEvent(std::move(event));
     if (error.category == ErrorCategory::Authorization) {
+      accepting_commands_.store(false, std::memory_order_release);
+      clearCommands();
       for (;;) {
         vTaskDelay(pdMS_TO_TICKS(60000));
       }
@@ -137,14 +161,20 @@ void NetworkService::run() {
     }
   }
   pushEvent(NetworkEvent{NetworkEventType::Authorized});
+  accepting_commands_.store(true, std::memory_order_release);
   next_poll_ms_ = millis();
 
   for (;;) {
     if (WiFi.status() != WL_CONNECTED) {
+      accepting_commands_.store(false, std::memory_order_release);
+      clearCommands();
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
     const uint32_t now = millis();
+    accepting_commands_.store(
+        blocked_until_ms_ == 0 || due(now, blocked_until_ms_),
+        std::memory_order_release);
     UiCommand command{UiCommandType::TogglePlay};
     if (popCommand(command)) {
       if (blocked_until_ms_ == 0 || due(now, blocked_until_ms_)) {
@@ -162,6 +192,11 @@ void NetworkService::run() {
       blocked_until_ms_ = 0;
       pollPlayback();
     }
+    if (authorization_required_) {
+      for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(60000));
+      }
+    }
     vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
@@ -171,10 +206,13 @@ void NetworkService::scheduleAfterRequest(bool success,
   const uint32_t now = millis();
   if (success) {
     transient_attempt_ = 0;
+    accepting_commands_.store(WiFi.status() == WL_CONNECTED,
+                              std::memory_order_release);
     next_poll_ms_ = now + 400;
     return;
   }
   if (error.category == ErrorCategory::RateLimited) {
+    accepting_commands_.store(false, std::memory_order_release);
     const uint32_t wait_ms = error.retry_after_ms > 0 ? error.retry_after_ms : 30000;
     blocked_until_ms_ = now + wait_ms;
     next_poll_ms_ = blocked_until_ms_;
@@ -192,6 +230,11 @@ void NetworkService::publishFailure(const SpotifyError &error) {
                          : NetworkEventType::Error};
   event.error = error;
   pushEvent(std::move(event));
+  if (error.category == ErrorCategory::Authorization) {
+    authorization_required_ = true;
+    accepting_commands_.store(false, std::memory_order_release);
+    clearCommands();
+  }
   scheduleAfterRequest(false, error);
 }
 
@@ -202,10 +245,18 @@ void NetworkService::pollPlayback() {
     publishFailure(error);
     return;
   }
-  const lv_img_dsc_t *image = nullptr;
+  ArtworkHandle image;
   if (snapshot.has_item && snapshot.item.uri != artwork_uri_) {
-    artwork_uri_ = snapshot.item.uri;
-    image = artwork_.load(snapshot.item.artwork_url);
+    if (snapshot.item.artwork_url.empty()) {
+      artwork_uri_ = snapshot.item.uri;
+    } else {
+      image = artwork_.load(snapshot.item.artwork_url);
+      if (image) {
+        artwork_uri_ = snapshot.item.uri;
+      }
+    }
+  } else if (!snapshot.has_item) {
+    artwork_uri_.clear();
   }
   playback_ = snapshot;
   NetworkEvent event{NetworkEventType::Playback};
@@ -344,6 +395,39 @@ void NetworkService::process(const UiCommand &command) {
   if (!success) {
     publishFailure(error);
   } else {
+    bool publish_playback = false;
+    switch (command.type) {
+    case UiCommandType::TogglePlay:
+      applyOptimisticPlayback(playback_, PlaybackMutation::TogglePlaying);
+      publish_playback = true;
+      break;
+    case UiCommandType::Seek:
+      playback_.progress_ms = command.value;
+      playback_.observed_at_ms = millis();
+      publish_playback = true;
+      break;
+    case UiCommandType::SetVolume:
+      playback_.device.volume_percent =
+          static_cast<uint8_t>(std::min<uint32_t>(command.value, 100));
+      playback_.volume_percent = playback_.device.volume_percent;
+      publish_playback = true;
+      break;
+    case UiCommandType::ToggleShuffle:
+      applyOptimisticPlayback(playback_, PlaybackMutation::ToggleShuffle);
+      publish_playback = true;
+      break;
+    case UiCommandType::CycleRepeat:
+      applyOptimisticPlayback(playback_, PlaybackMutation::CycleRepeat);
+      publish_playback = true;
+      break;
+    default:
+      break;
+    }
+    if (publish_playback) {
+      NetworkEvent event{NetworkEventType::Playback};
+      event.playback = playback_;
+      pushEvent(std::move(event));
+    }
     scheduleAfterRequest(true, error);
   }
 }

@@ -85,8 +85,8 @@ bool SpotifyClient::refreshAccessToken(SpotifyError &error) {
   const HttpResponse response = requestRaw(
       "POST", kTokenUrl, body, "application/x-www-form-urlencoded", false);
   if (!successful(response.status)) {
-    error = parseSpotifyError(response.status, response.body,
-                              response.retry_after_seconds);
+    error = parseOAuthTokenError(response.status, response.body,
+                                 response.retry_after_seconds);
     return false;
   }
   JsonDocument document;

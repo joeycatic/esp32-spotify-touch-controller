@@ -27,6 +27,7 @@ bool parseSavedTracks(const std::string &json, uint32_t page_offset,
                       SpotifyPage<TrackSummary> &page);
 SpotifyError parseSpotifyError(int status, const std::string &json,
                                uint32_t retry_after_seconds = 0);
+SpotifyError parseOAuthTokenError(int status, const std::string &json,
+                                  uint32_t retry_after_seconds = 0);
 
 } // namespace spotctl
-

@@ -141,6 +141,49 @@ void spotifyErrorsMapToActionableCategories() {
             ErrorCategory::Permanent);
 }
 
+void oauthTokenErrorsRequireReauthorization() {
+  const spotctl::SpotifyError invalid_grant = spotctl::parseOAuthTokenError(
+      400,
+      R"json({"error":"invalid_grant","error_description":"Refresh token revoked"})json");
+  EXPECT_EQ(invalid_grant.category, ErrorCategory::Authorization);
+  EXPECT_EQ(invalid_grant.reason, std::string("invalid_grant"));
+  EXPECT_EQ(invalid_grant.user_message, std::string("Refresh token revoked"));
+
+  const spotctl::SpotifyError temporary = spotctl::parseOAuthTokenError(
+      503, R"json({"error":"temporarily_unavailable"})json");
+  EXPECT_EQ(temporary.category, ErrorCategory::Transient);
+}
+
+void offlineCommandsAreRejectedAndOptimisticStateIsCoherent() {
+  EXPECT_FALSE(spotctl::commandAccepted(true, false, false));
+  EXPECT_FALSE(spotctl::commandAccepted(false, true, false));
+  EXPECT_FALSE(spotctl::commandAccepted(true, true, true));
+  EXPECT_TRUE(spotctl::commandAccepted(true, true, false));
+
+  PlaybackSnapshot playback;
+  playback.is_playing = true;
+  playback.shuffle = false;
+  playback.repeat = spotctl::RepeatMode::Off;
+  spotctl::applyOptimisticPlayback(playback,
+                                   spotctl::PlaybackMutation::TogglePlaying);
+  EXPECT_FALSE(playback.is_playing);
+  spotctl::applyOptimisticPlayback(playback,
+                                   spotctl::PlaybackMutation::TogglePlaying);
+  EXPECT_TRUE(playback.is_playing);
+  spotctl::applyOptimisticPlayback(playback,
+                                   spotctl::PlaybackMutation::ToggleShuffle);
+  EXPECT_TRUE(playback.shuffle);
+  spotctl::applyOptimisticPlayback(playback,
+                                   spotctl::PlaybackMutation::CycleRepeat);
+  EXPECT_EQ(playback.repeat, spotctl::RepeatMode::Context);
+  spotctl::applyOptimisticPlayback(playback,
+                                   spotctl::PlaybackMutation::CycleRepeat);
+  EXPECT_EQ(playback.repeat, spotctl::RepeatMode::Track);
+  spotctl::applyOptimisticPlayback(playback,
+                                   spotctl::PlaybackMutation::CycleRepeat);
+  EXPECT_EQ(playback.repeat, spotctl::RepeatMode::Off);
+}
+
 void provisioningValidationMatchesTheDesktopUtility() {
   spotctl::ProvisioningFields valid{
       "Studio WiFi", "correct horse battery staple",
@@ -148,6 +191,15 @@ void provisioningValidationMatchesTheDesktopUtility() {
   EXPECT_EQ(spotctl::validateProvisioning(valid), std::string());
 
   valid.ssid = std::string(33, 'x');
+  EXPECT_EQ(spotctl::validateProvisioning(valid),
+            std::string("invalid_wifi_ssid"));
+
+  std::string seventeen_utf8_characters;
+  for (int index = 0; index < 17; ++index) {
+    seventeen_utf8_characters += "\xC3\xA4";
+  }
+  valid.ssid = seventeen_utf8_characters;
+  EXPECT_EQ(valid.ssid.size(), static_cast<size_t>(34));
   EXPECT_EQ(spotctl::validateProvisioning(valid),
             std::string("invalid_wifi_ssid"));
 
@@ -276,6 +328,8 @@ int main() {
   pageWindowRetainsOnlyThreePages();
   reducerKeepsNetworkCallbacksAwayFromUiObjects();
   spotifyErrorsMapToActionableCategories();
+  oauthTokenErrorsRequireReauthorization();
+  offlineCommandsAreRejectedAndOptimisticStateIsCoherent();
   provisioningValidationMatchesTheDesktopUtility();
   playbackParserHandlesTracksAndEpisodes();
   playlistParserAppliesOwnershipRestriction();

@@ -52,6 +52,9 @@ void Ui::clear() {
   mini_title_ = nullptr;
   mini_play_label_ = nullptr;
   message_label_ = nullptr;
+  connection_badge_ = nullptr;
+  calibration_target_ = nullptr;
+  calibration_label_ = nullptr;
 }
 
 void Ui::applyBaseStyle() {
@@ -61,6 +64,21 @@ void Ui::applyBaseStyle() {
   lv_obj_set_style_text_color(screen, lv_color_hex(0xF7F7F7), 0);
   lv_obj_set_style_text_font(screen, &lv_font_montserrat_14, 0);
   lv_obj_add_event_cb(screen, gestureEvent, LV_EVENT_GESTURE, this);
+
+  connection_badge_ = lv_label_create(screen);
+  lv_label_set_text(connection_badge_, "OFFLINE");
+  lv_obj_set_style_text_font(connection_badge_, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(connection_badge_, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_color(connection_badge_, lv_color_hex(0xB3263E), 0);
+  lv_obj_set_style_bg_opa(connection_badge_, LV_OPA_COVER, 0);
+  lv_obj_set_style_pad_hor(connection_badge_, 4, 0);
+  lv_obj_set_style_pad_ver(connection_badge_, 2, 0);
+  lv_obj_set_style_radius(connection_badge_, 4, 0);
+  lv_obj_align(connection_badge_, LV_ALIGN_TOP_RIGHT, -3, 2);
+  if (!offline_) {
+    lv_obj_add_flag(connection_badge_, LV_OBJ_FLAG_HIDDEN);
+  }
+  lv_obj_move_foreground(connection_badge_);
 }
 
 lv_obj_t *Ui::makeButton(lv_obj_t *parent, const char *symbol, lv_coord_t x,
@@ -128,7 +146,27 @@ void Ui::showConnecting(const char *ssid) {
 }
 
 void Ui::showOffline() {
+  setOffline(true);
   showMessage("Offline - reconnecting", true);
+}
+
+void Ui::setOffline(bool offline) {
+  offline_ = offline;
+  if (connection_badge_ != nullptr) {
+    if (offline_) {
+      lv_obj_clear_flag(connection_badge_, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_move_foreground(connection_badge_);
+    } else {
+      lv_obj_add_flag(connection_badge_, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (screen_ == Screen::Player && status_label_ != nullptr) {
+    lv_label_set_text(status_label_,
+                      offline_ ? "Offline"
+                               : (playback_.device.name.empty()
+                                      ? "No active device"
+                                      : playback_.device.name.c_str()));
+  }
 }
 
 void Ui::showFactoryResetCountdown(uint8_t seconds_remaining) {
@@ -229,7 +267,7 @@ void Ui::showPlayer() {
   makeButton(lv_scr_act(), LV_SYMBOL_VOLUME_MAX, 212, 275, 26, 40,
              volumeOpenEvent);
 
-  updatePlaybackWidgets(artwork_);
+  updatePlaybackWidgets();
 }
 
 void Ui::showLibrary(bool request_data) {
@@ -267,10 +305,14 @@ void Ui::rebuildPlaylistRows() {
   for (size_t index = 0; index < playlists_.size(); ++index) {
     const PlaylistSummary &playlist = playlists_[index];
     std::string label = playlist.name;
+    if (!playlist.owner.empty()) {
+      label += "\nby " + playlist.owner;
+    }
     if (!playlist.items_browsable) {
       label += "  (play only)";
     }
     lv_obj_t *row = lv_list_add_btn(list_, LV_SYMBOL_AUDIO, label.c_str());
+    lv_obj_set_height(row, 52);
     lv_obj_set_user_data(row, reinterpret_cast<void *>(index + 1));
     lv_obj_add_event_cb(row, playlistEvent, LV_EVENT_CLICKED, this);
   }
@@ -332,9 +374,13 @@ void Ui::rebuildTrackRows() {
   lv_obj_clean(list_);
   for (size_t index = 0; index < tracks_.size(); ++index) {
     const TrackSummary &track = tracks_[index];
-    std::string label = track.title;
+    std::string label = playback_.item.uri == track.uri ? "• " : "";
+    label += track.title;
     if (!track.artists.empty()) {
       label += "\n" + track.artists;
+    }
+    if (track.duration_ms > 0) {
+      label += "  ·  " + clockText(track.duration_ms);
     }
     lv_obj_t *row = lv_list_add_btn(list_, LV_SYMBOL_PLAY, label.c_str());
     lv_obj_set_height(row, 54);
@@ -459,10 +505,7 @@ void Ui::showTouchCalibration() {
   lv_obj_add_event_cb(calibration_target_, calibrationEvent, LV_EVENT_CLICKED, this);
 }
 
-void Ui::updatePlaybackWidgets(const lv_img_dsc_t *new_artwork) {
-  if (new_artwork != nullptr) {
-    artwork_ = new_artwork;
-  }
+void Ui::updatePlaybackWidgets() {
   if (screen_ == Screen::Player) {
     lv_label_set_text(title_label_,
                       playback_.has_item ? playback_.item.title.c_str()
@@ -470,9 +513,11 @@ void Ui::updatePlaybackWidgets(const lv_img_dsc_t *new_artwork) {
     lv_label_set_text(subtitle_label_,
                       playback_.has_item ? playback_.item.subtitle.c_str()
                                          : "Start Spotify on another device");
-    lv_label_set_text(status_label_, playback_.device.name.empty()
-                                          ? "No active device"
-                                          : playback_.device.name.c_str());
+    lv_label_set_text(status_label_,
+                      offline_ ? "Offline"
+                               : (playback_.device.name.empty()
+                                      ? "No active device"
+                                      : playback_.device.name.c_str()));
     lv_label_set_text(play_button_label_,
                       playback_.is_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
     lv_obj_set_style_text_color(shuffle_button_,
@@ -487,11 +532,11 @@ void Ui::updatePlaybackWidgets(const lv_img_dsc_t *new_artwork) {
     const uint32_t maximum = std::max<uint32_t>(1, playback_.item.duration_ms / 1000U);
     lv_slider_set_range(progress_slider_, 0, static_cast<int32_t>(maximum));
     lv_label_set_text(duration_label_, clockText(playback_.item.duration_ms).c_str());
-    if (artwork_ != nullptr) {
-      lv_img_set_src(artwork_image_, artwork_);
-      const uint16_t zoom = artwork_->header.w > 0
+    if (artwork_) {
+      lv_img_set_src(artwork_image_, &artwork_->image);
+      const uint16_t zoom = artwork_->image.header.w > 0
                                 ? static_cast<uint16_t>(184U * 256U /
-                                                        artwork_->header.w)
+                                                        artwork_->image.header.w)
                                 : 256;
       lv_img_set_zoom(artwork_image_, zoom);
       lv_obj_clear_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
@@ -502,7 +547,6 @@ void Ui::updatePlaybackWidgets(const lv_img_dsc_t *new_artwork) {
     }
   }
   updateMiniPlayer();
-  noteInteraction();
 }
 
 void Ui::updateMiniPlayer() {
@@ -561,22 +605,39 @@ void Ui::destroyMessage() {
 void Ui::handle(const NetworkEvent &event) {
   switch (event.type) {
   case NetworkEventType::Authorized:
+    setOffline(false);
     showMessage("Spotify connected");
     break;
   case NetworkEventType::AuthorizationRequired:
+    provisioning_screen_ = true;
     showSetup("Spotify login required", "Reconnect USB and run make provision.");
     break;
   case NetworkEventType::Playback:
-    if (playback_.item.uri != event.playback.item.uri) {
-      artwork_ = event.artwork;
+    setOffline(false);
+    {
+      const bool wake_for_new_playback =
+          playback_.item.uri != event.playback.item.uri ||
+          (!playback_.is_playing && event.playback.is_playing);
+      ArtworkHandle previous_artwork;
+      if (playback_.item.uri != event.playback.item.uri || event.artwork) {
+        previous_artwork = artwork_;
+        artwork_ = event.artwork;
+      }
+      playback_ = event.playback;
+      if (screen_ == Screen::Setup || screen_ == Screen::Diagnostics) {
+        showPlayer();
+      }
+      updatePlaybackWidgets();
+      if (wake_for_new_playback) {
+        noteInteraction();
+      }
+      // Keep the old PSRAM buffer alive until LVGL has been pointed at the
+      // replacement (or the image widget has been hidden/deleted).
+      previous_artwork.reset();
     }
-    playback_ = event.playback;
-    if (screen_ == Screen::Setup || screen_ == Screen::Diagnostics) {
-      showPlayer();
-    }
-    updatePlaybackWidgets(event.artwork);
     break;
   case NetworkEventType::Playlists:
+    setOffline(false);
     if (event.replace) {
       playlists_.clear();
     }
@@ -591,6 +652,7 @@ void Ui::handle(const NetworkEvent &event) {
     }
     break;
   case NetworkEventType::Tracks:
+    setOffline(false);
     if (event.replace) {
       tracks_.clear();
       tracks_are_liked_ = event.liked;
@@ -608,6 +670,7 @@ void Ui::handle(const NetworkEvent &event) {
     }
     break;
   case NetworkEventType::Devices:
+    setOffline(false);
     devices_ = event.devices;
     showDevices();
     break;
@@ -632,6 +695,9 @@ void Ui::handle(const NetworkEvent &event) {
 
 void Ui::tick() {
   const uint32_t now = millis();
+  if (offline_ && connection_badge_ != nullptr) {
+    lv_obj_move_foreground(connection_badge_);
+  }
   if (lv_disp_get_inactive_time(nullptr) < 500) {
     noteInteraction();
   }
@@ -653,11 +719,13 @@ void Ui::tick() {
   }
 }
 
-void Ui::send(UiCommand command) {
+bool Ui::send(UiCommand command) {
   noteInteraction();
   if (!network_.enqueue(command)) {
     showMessage("Spotify is not connected yet", true);
+    return false;
   }
+  return true;
 }
 
 void Ui::noteInteraction() {
@@ -673,9 +741,10 @@ void Ui::previousEvent(lv_event_t *event) {
 }
 void Ui::playEvent(lv_event_t *event) {
   Ui *ui = self(event);
-  ui->playback_.is_playing = !ui->playback_.is_playing;
-  ui->updatePlaybackWidgets();
-  ui->send(UiCommand{UiCommandType::TogglePlay});
+  if (ui->send(UiCommand{UiCommandType::TogglePlay})) {
+    ui->playback_.is_playing = !ui->playback_.is_playing;
+    ui->updatePlaybackWidgets();
+  }
 }
 void Ui::nextEvent(lv_event_t *event) {
   self(event)->send(UiCommand{UiCommandType::Next});
@@ -787,16 +856,18 @@ void Ui::trackEvent(lv_event_t *event) {
       command.uris.push_back(ui->tracks_[next].uri);
     }
   }
-  ui->send(std::move(command));
-  ui->showPlayer();
+  if (ui->send(std::move(command))) {
+    ui->showPlayer();
+  }
 }
 
 void Ui::playPlaylistEvent(lv_event_t *event) {
   Ui *ui = self(event);
   UiCommand command{UiCommandType::PlayPlaylist};
   command.uri = ui->play_only_playlist_.uri;
-  ui->send(std::move(command));
-  ui->showPlayer();
+  if (ui->send(std::move(command))) {
+    ui->showPlayer();
+  }
 }
 
 void Ui::listScrollEvent(lv_event_t *event) {
@@ -805,11 +876,13 @@ void Ui::listScrollEvent(lv_event_t *event) {
     return;
   }
   if (ui->screen_ == Screen::Library && ui->playlists_have_more_) {
-    ui->send(UiCommand{UiCommandType::LoadMorePlaylists});
-    ui->playlists_have_more_ = false;
+    if (ui->send(UiCommand{UiCommandType::LoadMorePlaylists})) {
+      ui->playlists_have_more_ = false;
+    }
   } else if (ui->screen_ == Screen::Playlist && ui->tracks_have_more_) {
-    ui->send(UiCommand{UiCommandType::LoadMoreTracks});
-    ui->tracks_have_more_ = false;
+    if (ui->send(UiCommand{UiCommandType::LoadMoreTracks})) {
+      ui->tracks_have_more_ = false;
+    }
   }
 }
 
@@ -827,8 +900,9 @@ void Ui::deviceRowEvent(lv_event_t *event) {
   }
   UiCommand command{UiCommandType::TransferDevice};
   command.id = device.id;
-  ui->send(std::move(command));
-  ui->showPlayer();
+  if (ui->send(std::move(command))) {
+    ui->showPlayer();
+  }
 }
 
 void Ui::diagnosticsEvent(lv_event_t *event) {

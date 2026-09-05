@@ -17,6 +17,12 @@ uint32_t interpolatedProgressMs(const PlaybackSnapshot &playback,
 uint32_t backoffMs(uint8_t attempt, uint32_t jitter_ms = 0);
 bool playlistItemsBrowsable(bool owned, bool collaborative);
 ErrorCategory classifySpotifyError(int http_status, const std::string &reason);
+bool commandAccepted(bool service_running, bool wifi_connected,
+                     bool rate_limited);
+
+enum class PlaybackMutation { TogglePlaying, ToggleShuffle, CycleRepeat };
+void applyOptimisticPlayback(PlaybackSnapshot &playback,
+                             PlaybackMutation mutation);
 
 template <typename T> class PageWindow {
 public:

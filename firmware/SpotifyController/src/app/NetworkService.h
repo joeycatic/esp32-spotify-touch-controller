@@ -4,6 +4,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+#include <atomic>
 #include <deque>
 #include <string>
 
@@ -28,6 +29,7 @@ private:
   void run();
   bool syncClock();
   bool popCommand(UiCommand &command);
+  void clearCommands();
   void pushEvent(NetworkEvent event);
   void pollPlayback();
   void process(const UiCommand &command);
@@ -43,6 +45,7 @@ private:
   std::deque<NetworkEvent> events_;
   TaskHandle_t task_{nullptr};
   volatile bool running_{false};
+  std::atomic<bool> accepting_commands_{false};
   PlaybackSnapshot playback_;
   std::string artwork_uri_;
   std::string selected_playlist_id_;
@@ -53,10 +56,10 @@ private:
   uint32_t track_offset_{0};
   bool more_playlists_{false};
   bool more_tracks_{false};
+  bool authorization_required_{false};
   uint32_t next_poll_ms_{0};
   uint32_t blocked_until_ms_{0};
   uint8_t transient_attempt_{0};
 };
 
 } // namespace spotctl
-

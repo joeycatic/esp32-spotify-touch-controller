@@ -66,6 +66,7 @@ bool ConfigStore::save(const DeviceConfig &config) {
   }
   const char active = preferences.getChar("active", 'a');
   const char target = active == 'a' ? 'b' : 'a';
+  preferences.remove(key(target, "_schema").c_str());
   const size_t password_written = preferences.putString(
       key(target, "_pass").c_str(), config.password.c_str());
   const bool password_ok = config.password.empty() || password_written > 0;

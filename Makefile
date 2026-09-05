@@ -1,4 +1,4 @@
-.PHONY: bootstrap test build flash monitor
+.PHONY: bootstrap test build flash monitor provision
 
 bootstrap:
 	./scripts/bootstrap.sh
@@ -15,3 +15,5 @@ flash:
 monitor:
 	./scripts/monitor.sh
 
+provision:
+	./scripts/provision.sh

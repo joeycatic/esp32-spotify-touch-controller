@@ -8,6 +8,7 @@
 #include "core/RuntimePolicy.h"
 #include "provision/ProvisioningValidation.h"
 #include "spotify/SpotifyParser.h"
+#include "spotify/SpotifyRequest.h"
 
 namespace {
 
@@ -256,6 +257,15 @@ void deviceAndErrorParsersHandleSparseResponses() {
   EXPECT_EQ(error.reason, std::string("QUOTA_EXCEEDED"));
 }
 
+void spotifyRequestEncodingProtectsQueryAndJsonBoundaries() {
+  EXPECT_EQ(spotctl::urlEncode("client id+/="),
+            std::string("client%20id%2B%2F%3D"));
+  EXPECT_EQ(spotctl::playContextBody("spotify:playlist:abc", 17),
+            std::string("{\"context_uri\":\"spotify:playlist:abc\",\"offset\":{\"position\":17}}"));
+  EXPECT_EQ(spotctl::playUrisBody({"spotify:track:a", "spotify:track:b"}),
+            std::string("{\"uris\":[\"spotify:track:a\",\"spotify:track:b\"]}"));
+}
+
 } // namespace
 
 int main() {
@@ -271,6 +281,7 @@ int main() {
   playlistParserAppliesOwnershipRestriction();
   trackParserSkipsUnavailableItemsAndKeepsPositions();
   deviceAndErrorParsersHandleSparseResponses();
+  spotifyRequestEncodingProtectsQueryAndJsonBoundaries();
 
   if (failures != 0) {
     std::cerr << failures << " assertion(s) failed\n";

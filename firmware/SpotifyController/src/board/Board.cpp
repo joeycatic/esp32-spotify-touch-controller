@@ -49,7 +49,19 @@ bool Board::begin() {
   buffer_b_ = static_cast<lv_color_t *>(
       heap_caps_malloc(pixel_count * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
   if (buffer_a_ == nullptr || buffer_b_ == nullptr) {
-    return false;
+    if (buffer_a_ != nullptr) {
+      heap_caps_free(buffer_a_);
+    }
+    if (buffer_b_ != nullptr) {
+      heap_caps_free(buffer_b_);
+    }
+    buffer_a_ = static_cast<lv_color_t *>(heap_caps_malloc(
+        pixel_count * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    buffer_b_ = static_cast<lv_color_t *>(heap_caps_malloc(
+        pixel_count * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (buffer_a_ == nullptr || buffer_b_ == nullptr) {
+      return false;
+    }
   }
 
   lv_disp_draw_buf_init(&draw_buffer_, buffer_a_, buffer_b_, pixel_count);

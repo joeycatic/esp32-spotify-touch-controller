@@ -12,6 +12,10 @@ class ProvisioningError(RuntimeError):
     pass
 
 
+SERIAL_CHUNK_BYTES = 128
+SERIAL_CHUNK_PAUSE_SECONDS = 0.02
+
+
 @dataclass(frozen=True)
 class ProvisioningData:
     wifi_ssid: str
@@ -79,8 +83,13 @@ def provision_serial(
         if settle_seconds:
             time.sleep(settle_seconds)
         connection.reset_input_buffer()
-        connection.write(encoded)
-        connection.flush()
+        for offset in range(0, len(encoded), SERIAL_CHUNK_BYTES):
+            chunk = encoded[offset : offset + SERIAL_CHUNK_BYTES]
+            if connection.write(chunk) != len(chunk):
+                raise ProvisioningError("Could not write the complete provisioning message")
+            connection.flush()
+            if offset + len(chunk) < len(encoded):
+                time.sleep(SERIAL_CHUNK_PAUSE_SECONDS)
 
         while time.monotonic() < deadline:
             line = connection.readline()
@@ -98,4 +107,3 @@ def provision_serial(
             raise ProvisioningError(f"The ESP32 rejected provisioning: {message}")
 
     raise ProvisioningError("Timed out waiting for the ESP32 provisioning response")
-

@@ -23,6 +23,7 @@ class FakeSerial:
     def __init__(self, response: bytes):
         self.response = io.BytesIO(response)
         self.written = b""
+        self.write_calls: list[bytes] = []
         self.closed = False
 
     def __enter__(self):
@@ -35,6 +36,7 @@ class FakeSerial:
         return None
 
     def write(self, value: bytes):
+        self.write_calls.append(value)
         self.written += value
         return len(value)
 
@@ -84,6 +86,26 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(fake.written, encode_provisioning_message(VALID))
         self.assertTrue(fake.closed)
 
+    def test_long_frame_is_written_in_bounded_chunks(self):
+        long_data = ProvisioningData(
+            wifi_ssid=VALID.wifi_ssid,
+            wifi_password=VALID.wifi_password,
+            client_id=VALID.client_id,
+            refresh_token="R" * 1800,
+        )
+        fake = FakeSerial(b'{"v":1,"type":"provision_result","ok":true}\n')
+
+        self.assertTrue(
+            provision_serial(
+                "/dev/fake",
+                long_data,
+                serial_factory=lambda **_kwargs: fake,
+                settle_seconds=0,
+            )
+        )
+        self.assertEqual(fake.written, encode_provisioning_message(long_data))
+        self.assertLessEqual(max(map(len, fake.write_calls)), 128)
+
     def test_serial_provisioning_surfaces_device_error_without_secrets(self):
         fake = FakeSerial(
             b'{"v":1,"type":"provision_result","ok":false,'
@@ -101,4 +123,3 @@ class ProtocolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

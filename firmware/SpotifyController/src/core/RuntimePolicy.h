@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "core/Models.h"
+#include "Models.h"
 
 namespace spotctl {
 
@@ -47,4 +47,3 @@ private:
 };
 
 } // namespace spotctl
-

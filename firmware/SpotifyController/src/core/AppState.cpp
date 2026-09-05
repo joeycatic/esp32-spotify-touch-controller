@@ -1,4 +1,4 @@
-#include "core/AppState.h"
+#include "AppState.h"
 
 namespace spotctl {
 
@@ -54,4 +54,3 @@ AppState reduce(const AppState &current, const AppEvent &event) {
 }
 
 } // namespace spotctl
-

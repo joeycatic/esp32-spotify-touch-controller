@@ -26,14 +26,14 @@ fi
 "${ARDUINO_CLI}" core install esp32:esp32@3.3.11 --config-file "${ARDUINO_CONFIG}"
 "${ARDUINO_CLI}" lib install \
   "lvgl@8.4.0" \
-  "GFX Library for Arduino@1.5.0" \
+  "GFX Library for Arduino@1.6.7" \
   "ArduinoJson@7.4.3" \
   "TJpg_Decoder@1.1.0" \
   --config-file "${ARDUINO_CONFIG}"
+cp "${SKETCH_DIR}/lv_conf.h" "${PROJECT_ROOT}/.arduino/user/libraries/lv_conf.h"
 
 python3 -m venv "${PROJECT_ROOT}/.venv"
 "${PROJECT_ROOT}/.venv/bin/python" -m pip install --quiet --upgrade pip
 "${PROJECT_ROOT}/.venv/bin/python" -m pip install --quiet -r "${PROJECT_ROOT}/tools/provision/requirements.txt"
 
 echo "Toolchain ready: $("${ARDUINO_CLI}" version)"
-

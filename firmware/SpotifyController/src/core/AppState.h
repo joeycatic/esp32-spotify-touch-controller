@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "core/Models.h"
+#include "Models.h"
 
 namespace spotctl {
 

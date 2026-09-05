@@ -1,4 +1,4 @@
-#include "core/RuntimePolicy.h"
+#include "RuntimePolicy.h"
 
 #include <algorithm>
 #include <limits>
@@ -55,4 +55,3 @@ ErrorCategory classifySpotifyError(int http_status, const std::string &) {
 }
 
 } // namespace spotctl
-

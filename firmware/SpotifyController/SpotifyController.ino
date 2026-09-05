@@ -82,7 +82,9 @@ void loop() {
     if (connected && !network_service.running()) {
       network_service.begin(device_config);
     }
-    if (!connected && wifi_was_connected) {
+    if (connected && !wifi_was_connected) {
+      ui.showOnline();
+    } else if (!connected && wifi_was_connected) {
       ui.showOffline();
     }
     wifi_was_connected = connected;

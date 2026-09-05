@@ -22,6 +22,7 @@ public:
   void tick();
   void handle(const NetworkEvent &event);
   void showConnecting(const char *ssid);
+  void showOnline();
   void showOffline();
   void showFactoryResetCountdown(uint8_t seconds_remaining);
   void showFactoryResetComplete();

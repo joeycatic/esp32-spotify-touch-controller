@@ -145,6 +145,8 @@ void Ui::showConnecting(const char *ssid) {
   showSetup("Connecting to Wi-Fi", detail.c_str());
 }
 
+void Ui::showOnline() { setOffline(false); }
+
 void Ui::showOffline() {
   setOffline(true);
   showMessage("Offline - reconnecting", true);
@@ -605,7 +607,6 @@ void Ui::destroyMessage() {
 void Ui::handle(const NetworkEvent &event) {
   switch (event.type) {
   case NetworkEventType::Authorized:
-    setOffline(false);
     showMessage("Spotify connected");
     break;
   case NetworkEventType::AuthorizationRequired:
@@ -613,7 +614,6 @@ void Ui::handle(const NetworkEvent &event) {
     showSetup("Spotify login required", "Reconnect USB and run make provision.");
     break;
   case NetworkEventType::Playback:
-    setOffline(false);
     {
       const bool wake_for_new_playback =
           playback_.item.uri != event.playback.item.uri ||
@@ -637,7 +637,6 @@ void Ui::handle(const NetworkEvent &event) {
     }
     break;
   case NetworkEventType::Playlists:
-    setOffline(false);
     if (event.replace) {
       playlists_.clear();
     }
@@ -652,7 +651,6 @@ void Ui::handle(const NetworkEvent &event) {
     }
     break;
   case NetworkEventType::Tracks:
-    setOffline(false);
     if (event.replace) {
       tracks_.clear();
       tracks_are_liked_ = event.liked;
@@ -670,7 +668,6 @@ void Ui::handle(const NetworkEvent &event) {
     }
     break;
   case NetworkEventType::Devices:
-    setOffline(false);
     devices_ = event.devices;
     showDevices();
     break;

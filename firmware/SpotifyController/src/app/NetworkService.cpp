@@ -213,6 +213,7 @@ void NetworkService::scheduleAfterRequest(bool success,
   }
   if (error.category == ErrorCategory::RateLimited) {
     accepting_commands_.store(false, std::memory_order_release);
+    clearCommands();
     const uint32_t wait_ms = error.retry_after_ms > 0 ? error.retry_after_ms : 30000;
     blocked_until_ms_ = now + wait_ms;
     next_poll_ms_ = blocked_until_ms_;

@@ -10,7 +10,12 @@ import webbrowser
 
 from .oauth import exchange_code, verify_access_token, wait_for_callback
 from .pkce import authorization_url, code_challenge, generate_verifier
-from .protocol import ProvisioningData, ProvisioningError, provision_serial
+from .protocol import (
+    ProvisioningData,
+    ProvisioningError,
+    check_port_access,
+    provision_serial,
+)
 
 
 def detect_port() -> str:
@@ -50,6 +55,10 @@ def main(argv: list[str] | None = None) -> int:
         ssid = args.ssid or input("Wi-Fi SSID: ")
         wifi_password = getpass.getpass("Wi-Fi password (empty for open network): ")
 
+        # Checked before authorization so an unusable port cannot waste the flow.
+        port = args.port or detect_port()
+        check_port_access(port)
+
         verifier = generate_verifier()
         state = secrets.token_urlsafe(32)
         url = authorization_url(client_id, code_challenge(verifier), state)
@@ -63,7 +72,6 @@ def main(argv: list[str] | None = None) -> int:
         account_name = verify_access_token(str(tokens["access_token"]))
         print(f"Authorized as {account_name}.")
 
-        port = args.port or detect_port()
         data = ProvisioningData(
             wifi_ssid=ssid,
             wifi_password=wifi_password,

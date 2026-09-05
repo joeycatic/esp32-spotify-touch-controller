@@ -113,6 +113,15 @@ On Fedora, add the current account to the serial-access group if the device is o
 sudo usermod -aG dialout "$(id -un)"
 ```
 
+Group membership only reaches a session at login, so a shell opened before that
+command still fails with `Permission denied: /dev/ttyACM0` even though `getent
+group dialout` lists the account. Log out and back in, or run a single command
+with the group applied:
+
+```bash
+sg dialout -c 'make provision'
+```
+
 Avoid running provisioning as root because it opens a browser and handles account credentials.
 
 ### Spotify callback rejected

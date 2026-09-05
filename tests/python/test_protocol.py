@@ -1,10 +1,13 @@
 import io
 import json
+import os
+import tempfile
 import unittest
 
 from spotify_provision.protocol import (
     ProvisioningData,
     ProvisioningError,
+    check_port_access,
     encode_provisioning_message,
     provision_serial,
     redacted_summary,
@@ -118,6 +121,61 @@ class ProtocolTests(unittest.TestCase):
                 serial_factory=lambda **_kwargs: fake,
                 settle_seconds=0,
             )
+        self.assertNotIn(VALID.refresh_token, str(raised.exception))
+
+
+class PortAccessTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.port = os.path.join(self.directory.name, "ttyFAKE")
+        open(self.port, "w").close()
+
+    def denied(self, *, group="dialout", in_session=False, listed=False):
+        with self.assertRaises(ProvisioningError) as raised:
+            check_port_access(
+                self.port,
+                access=lambda _path, _mode: False,
+                device_group=lambda _port: group,
+                session_groups=lambda: [group] if in_session else [],
+                listed_in_group=lambda _group: listed,
+            )
+        return str(raised.exception)
+
+    def test_missing_port_is_reported_before_anything_else_runs(self):
+        with self.assertRaisesRegex(ProvisioningError, "does not exist"):
+            check_port_access("/dev/definitely-not-a-port")
+
+    def test_unreadable_port_names_the_owning_group_and_how_to_join_it(self):
+        message = self.denied()
+        self.assertIn("dialout", message)
+        self.assertIn("usermod", message)
+
+    def test_stale_session_membership_is_diagnosed_specifically(self):
+        message = self.denied(listed=True)
+        self.assertIn("log out", message.lower())
+        self.assertIn("sg dialout", message)
+        self.assertNotIn("usermod", message)
+
+    def test_session_that_already_has_the_group_gets_a_different_hint(self):
+        message = self.denied(in_session=True, listed=True)
+        self.assertNotIn("usermod", message)
+        self.assertIn("denying access", message)
+
+    def test_accessible_port_passes(self):
+        check_port_access(self.port, access=lambda _path, _mode: True)
+
+
+class SerialOpenTests(unittest.TestCase):
+    def test_permission_error_on_open_becomes_a_provisioning_error(self):
+        def refuse(**_kwargs):
+            raise PermissionError(13, "Permission denied")
+
+        with self.assertRaises(ProvisioningError) as raised:
+            provision_serial(
+                "/dev/fake", VALID, serial_factory=refuse, settle_seconds=0
+            )
+        self.assertIn("/dev/fake", str(raised.exception))
         self.assertNotIn(VALID.refresh_token, str(raised.exception))
 
 

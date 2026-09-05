@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, Sequence
 
 
 class ProvisioningError(RuntimeError):
@@ -67,6 +68,83 @@ def _default_serial_factory(**kwargs: Any):
     return serial.Serial(**kwargs)
 
 
+def _device_group(port: str) -> str | None:
+    """Name of the group that owns the port, when the platform can tell us."""
+    try:
+        import grp
+
+        return grp.getgrgid(os.stat(port).st_gid).gr_name
+    except (ImportError, KeyError, OSError):
+        return None
+
+
+def _session_groups() -> Sequence[str]:
+    try:
+        import grp
+
+        return [grp.getgrgid(gid).gr_name for gid in os.getgroups()]
+    except (ImportError, KeyError, OSError):
+        return []
+
+
+def _group_lists_current_user(group: str) -> bool:
+    try:
+        import getpass
+        import grp
+
+        return getpass.getuser() in grp.getgrnam(group).gr_mem
+    except (ImportError, KeyError, OSError):
+        return False
+
+
+def _permission_message(
+    port: str,
+    group: str | None,
+    session: Iterable[str],
+    listed_in_group: Callable[[str], bool],
+) -> str:
+    lines = [f"No permission to open {port}."]
+    if group is None:
+        lines.append("Check that your user may read and write the device.")
+        return "\n".join(lines)
+    if group in session:
+        lines.append(
+            f"Your session already carries the {group!r} group, so something else is"
+        )
+        lines.append("denying access (a lock held by another program, or SELinux).")
+        return "\n".join(lines)
+    if listed_in_group(group):
+        lines.append(
+            f"You are a member of {group!r}, but this login session predates that."
+        )
+        lines.append("Log out and back in to pick it up, or run just this command with:")
+        lines.append(f"  sg {group} -c 'make provision'")
+        return "\n".join(lines)
+    lines.append(f"The device is owned by the {group!r} group. Join it with:")
+    lines.append(f"  sudo usermod -aG {group} \"$USER\"")
+    lines.append("then log out and back in.")
+    return "\n".join(lines)
+
+
+def check_port_access(
+    port: str,
+    *,
+    access: Callable[[str, int], bool] = os.access,
+    device_group: Callable[[str], str | None] = _device_group,
+    session_groups: Callable[[], Sequence[str]] = _session_groups,
+    listed_in_group: Callable[[str], bool] = _group_lists_current_user,
+) -> None:
+    """Fail fast on an unusable port, before the Spotify authorization flow."""
+    if not os.path.exists(port):
+        raise ProvisioningError(f"Serial port {port} does not exist")
+    if not access(port, os.R_OK | os.W_OK):
+        raise ProvisioningError(
+            _permission_message(
+                port, device_group(port), session_groups(), listed_in_group
+            )
+        )
+
+
 def provision_serial(
     port: str,
     data: ProvisioningData,
@@ -79,7 +157,12 @@ def provision_serial(
     encoded = encode_provisioning_message(data)
     deadline = time.monotonic() + timeout_seconds
 
-    with factory(port=port, baudrate=115200, timeout=0.5) as connection:
+    try:
+        connection_context = factory(port=port, baudrate=115200, timeout=0.5)
+    except OSError as error:
+        raise ProvisioningError(f"Could not open {port}: {error}") from error
+
+    with connection_context as connection:
         if settle_seconds:
             time.sleep(settle_seconds)
         connection.reset_input_buffer()

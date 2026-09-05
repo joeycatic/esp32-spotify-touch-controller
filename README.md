@@ -1,8 +1,17 @@
 # ESP32 Spotify Touch Controller
 
+[![CI](https://github.com/joeycatic/esp32-spotify-touch-controller/actions/workflows/ci.yml/badge.svg)](https://github.com/joeycatic/esp32-spotify-touch-controller/actions/workflows/ci.yml)
+
+> [!WARNING]
+> `v1.0.0-rc.1` is a release candidate. Native tests and firmware compilation pass, but physical acceptance testing on the Waveshare ESP32-S3-Touch-LCD-2 is pending because the test antenna arrived damaged. Expect hardware-specific issues until the [hardware checklist](docs/hardware-checklist.md) is complete.
+
 A standalone Spotify display and touchscreen remote for the Waveshare ESP32-S3-Touch-LCD-2. After one-time USB setup, the controller connects directly to Wi-Fi and Spotify. No computer, cloud relay, or Raspberry Pi needs to remain running.
 
 The ESP32 controls Spotify playback on another Spotify Connect device. It does not play audio itself.
+
+## Project Status
+
+The software is feature-complete for the first release candidate. Physical-device validation is still pending; see the [hardware acceptance checklist](docs/hardware-checklist.md) for the exact tests that remain.
 
 ## Features
 
@@ -69,3 +78,6 @@ make provision                         # Interactive one-time setup
 
 Do not place Wi-Fi passwords, access tokens, refresh tokens, or client secrets in project files, shell arguments, issue reports, or chat. This project does not use a Spotify client secret. Configuration is stored in versioned A/B NVS slots; physical extraction remains possible because flash encryption is intentionally not enabled and no security eFuses are burned.
 
+## Contributing and Security
+
+Contributions are welcome; read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report security issues privately as described in [SECURITY.md](SECURITY.md), and never include credentials or tokens in an issue.

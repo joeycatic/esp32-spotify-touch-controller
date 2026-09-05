@@ -1,0 +1,12 @@
+.arduino/
+.tools/
+.venv/
+build/
+__pycache__/
+*.pyc
+.pytest_cache/
+.superpowers/
+.env
+secrets.json
+provisioning.json
+

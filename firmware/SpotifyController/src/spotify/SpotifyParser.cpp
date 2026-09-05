@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <limits>
+#include <string>
 
 #include "../core/RuntimePolicy.h"
 
@@ -50,6 +51,30 @@ std::string preferredImage(JsonArrayConst images) {
   return selected;
 }
 
+// Row thumbnails render near 40px, so the smallest variant Spotify offers is
+// both sufficient and roughly an order of magnitude cheaper to download.
+std::string smallestImage(JsonArrayConst images) {
+  std::string selected;
+  int selected_width = 0;
+  for (JsonObjectConst image : images) {
+    const std::string url = text(image["url"]);
+    if (url.empty()) {
+      continue;
+    }
+    const int width = image["width"] | 0;
+    if (width > 0) {
+      if (selected_width == 0 || width < selected_width) {
+        selected = url;
+        selected_width = width;
+      }
+    } else if (selected_width == 0) {
+      // Widths are absent on mosaic covers, which arrive largest first.
+      selected = url;
+    }
+  }
+  return selected;
+}
+
 RepeatMode parseRepeat(const std::string &value) {
   if (value == "track") {
     return RepeatMode::Track;
@@ -74,6 +99,8 @@ bool parseTrackObject(JsonObjectConst track, uint32_t position,
   result.duration_ms = track["duration_ms"] | 0U;
   result.artwork_url =
       preferredImage(track["album"]["images"].as<JsonArrayConst>());
+  result.thumbnail_url =
+      smallestImage(track["album"]["images"].as<JsonArrayConst>());
   result.position = position;
   return true;
 }
@@ -196,6 +223,8 @@ bool parsePlaylists(const std::string &json,
     playlist.owner = text(item["owner"]["display_name"]);
     playlist.artwork_url =
         preferredImage(item["images"].as<JsonArrayConst>());
+    playlist.thumbnail_url =
+        smallestImage(item["images"].as<JsonArrayConst>());
     playlist.collaborative = item["collaborative"] | false;
     std::string owner_id = text(item["owner"]["account_id"]);
     if (owner_id.empty()) {
@@ -233,7 +262,11 @@ SpotifyError parseSpotifyError(int status, const std::string &json,
   }
   result.category = classifySpotifyError(status, result.reason);
   if (result.user_message.empty()) {
-    result.user_message = "Spotify request failed";
+    // Nothing parseable came back, so the status is the only detail there is.
+    // Without it a gateway rejection and a dead connection look identical.
+    result.user_message =
+        status > 0 ? "Spotify request failed (HTTP " + std::to_string(status) + ")"
+                   : "Could not reach Spotify";
   }
   return result;
 }

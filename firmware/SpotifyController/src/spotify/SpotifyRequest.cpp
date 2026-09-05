@@ -2,7 +2,29 @@
 
 #include <ArduinoJson.h>
 
+#include <cstring>
+
 namespace spotctl {
+
+bool requiresZeroContentLength(const char *method, const std::string &body) {
+  if (method == nullptr || !body.empty()) {
+    return false;
+  }
+  return std::strcmp(method, "GET") != 0 && std::strcmp(method, "HEAD") != 0;
+}
+
+std::string hostOf(const std::string &url) {
+  const size_t scheme = url.find("://");
+  if (scheme == std::string::npos) {
+    return {};
+  }
+  const size_t start = scheme + 3;
+  const size_t end = url.find_first_of("/:?#", start);
+  if (end == std::string::npos) {
+    return url.substr(start);
+  }
+  return url.substr(start, end - start);
+}
 
 std::string urlEncode(const std::string &value) {
   constexpr char hexadecimal[] = "0123456789ABCDEF";

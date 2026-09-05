@@ -47,6 +47,7 @@ struct PlaylistSummary {
   std::string name;
   std::string owner;
   std::string artwork_url;
+  std::string thumbnail_url;
   bool collaborative{false};
   bool owned{false};
   bool items_browsable{false};
@@ -58,6 +59,7 @@ struct TrackSummary {
   std::string artists;
   uint32_t duration_ms{0};
   std::string artwork_url;
+  std::string thumbnail_url;
   uint32_t position{0};
 };
 

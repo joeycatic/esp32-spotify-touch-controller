@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <esp_heap_caps.h>
 
 #include <algorithm>
 
@@ -62,11 +63,22 @@ SpotifyClient::requestRaw(const char *method, const std::string &url,
   if (content_type != nullptr) {
     http.addHeader("Content-Type", content_type);
   }
+  if (requiresZeroContentLength(method, body)) {
+    http.addHeader("Content-Length", "0");
+  }
   const uint8_t *bytes = body.empty()
                              ? nullptr
                              : reinterpret_cast<const uint8_t *>(body.data());
   result.status = http.sendRequest(method, const_cast<uint8_t *>(bytes),
                                    body.size());
+  if (!successful(result.status)) {
+    // Failures carry the heap numbers with them: a TLS handshake that cannot
+    // find a large enough block fails exactly like a rejected request.
+    Serial.printf("[api] %s %s -> %d heap=%u largest=%u\n", method, url.c_str(),
+                  result.status, static_cast<unsigned>(ESP.getFreeHeap()),
+                  static_cast<unsigned>(heap_caps_get_largest_free_block(
+                      MALLOC_CAP_INTERNAL)));
+  }
   if (result.status > 0) {
     result.body = http.getString().c_str();
     const String retry_after = http.header("Retry-After");

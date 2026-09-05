@@ -81,3 +81,7 @@ Do not place Wi-Fi passwords, access tokens, refresh tokens, or client secrets i
 ## Contributing and Security
 
 Contributions are welcome; read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report security issues privately as described in [SECURITY.md](SECURITY.md), and never include credentials or tokens in an issue.
+
+## License
+
+Released under the [MIT License](LICENSE).

@@ -15,6 +15,7 @@ Initial public release candidate.
 - Browser-based Spotify PKCE authorization and USB provisioning without a client secret.
 - Automatic token refresh, validated HTTPS, rate-limit handling, offline recovery, and factory-reset recovery.
 - Native C++ tests, Python provisioning tests, reproducible firmware builds, and public CI.
+- MIT license.
 
 ### Release candidate limitations
 

@@ -50,12 +50,76 @@ bool NetworkService::enqueue(const UiCommand &command) {
   return true;
 }
 
+void NetworkService::resetThumbnailRequests() {
+  if (mutex_ == nullptr ||
+      xSemaphoreTake(mutex_, pdMS_TO_TICKS(20)) != pdTRUE) {
+    return;
+  }
+  thumbnail_requests_.clear();
+  xSemaphoreGive(mutex_);
+}
+
+bool NetworkService::requestThumbnail(const std::string &key,
+                                      const std::string &url) {
+  if (!running_ || mutex_ == nullptr ||
+      xSemaphoreTake(mutex_, pdMS_TO_TICKS(20)) != pdTRUE) {
+    return false;
+  }
+  const bool queued = thumbnail_requests_.push(key, url);
+  xSemaphoreGive(mutex_);
+  return queued;
+}
+
+bool NetworkService::popThumbnail(std::string &key, std::string &url) {
+  if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(20)) != pdTRUE) {
+    return false;
+  }
+  const bool popped = thumbnail_requests_.pop(key, url);
+  xSemaphoreGive(mutex_);
+  return popped;
+}
+
+void NetworkService::serviceThumbnails() {
+  std::string key;
+  std::string url;
+  while (popThumbnail(key, url)) {
+    // Cached covers are answered without touching the network, so scrolling
+    // back over rows already seen costs nothing.
+    if (const ArtworkHandle *cached = thumbnails_.get(url)) {
+      const ArtworkHandle frame = *cached;
+      if (frame) {
+        NetworkEvent event{NetworkEventType::Artwork};
+        event.key = key;
+        event.artwork = frame;
+        pushEvent(std::move(event));
+      }
+      continue;
+    }
+    const ArtworkHandle frame = artwork_.loadThumbnail(url);
+    // An empty handle is stored too: a cover that failed is remembered as
+    // failed rather than retried on every scroll.
+    thumbnails_.put(url, frame);
+    if (frame) {
+      NetworkEvent event{NetworkEventType::Artwork};
+      event.key = key;
+      event.artwork = frame;
+      pushEvent(std::move(event));
+    }
+    // One download per pass keeps commands and playback polling responsive.
+    return;
+  }
+  // The batch is done. Holding the connection open past it would keep ~50KB of
+  // internal heap out of reach of the API's TLS handshakes.
+  artwork_.releaseConnection();
+}
+
 void NetworkService::clearCommands() {
   if (mutex_ == nullptr ||
       xSemaphoreTake(mutex_, pdMS_TO_TICKS(20)) != pdTRUE) {
     return;
   }
   commands_.clear();
+  thumbnail_requests_.clear();
   xSemaphoreGive(mutex_);
 }
 
@@ -176,7 +240,9 @@ void NetworkService::run() {
         blocked_until_ms_ == 0 || due(now, blocked_until_ms_),
         std::memory_order_release);
     UiCommand command{UiCommandType::TogglePlay};
+    bool handled_command = false;
     if (popCommand(command)) {
+      handled_command = true;
       if (blocked_until_ms_ == 0 || due(now, blocked_until_ms_)) {
         process(command);
       } else {
@@ -191,6 +257,11 @@ void NetworkService::run() {
         due(now, next_poll_ms_)) {
       blocked_until_ms_ = 0;
       pollPlayback();
+    } else if (!handled_command &&
+               (blocked_until_ms_ == 0 || due(now, blocked_until_ms_))) {
+      // Lowest priority: covers are fetched only in passes where nothing the
+      // user is waiting on is due.
+      serviceThumbnails();
     }
     if (authorization_required_) {
       for (;;) {

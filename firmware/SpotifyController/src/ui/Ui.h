@@ -3,7 +3,9 @@
 #include <lvgl.h>
 
 #include <cstdint>
+#include <deque>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../app/ControllerMessages.h"
@@ -67,6 +69,15 @@ private:
   void showVolumeOverlay();
   void showQrCode();
   void showTouchCalibration();
+  void requestVisibleThumbnails();
+  void applyThumbnail(const std::string &key, const ArtworkHandle &frame);
+  void storeThumbnail(const std::string &key, const ArtworkHandle &frame);
+  const ArtworkHandle *storedThumbnail(const std::string &key) const;
+  void applyStoredThumbnails();
+  lv_obj_t *rowForKey(const std::string &key) const;
+  std::string rowKey(size_t encoded) const;
+  void setRowThumbnail(lv_obj_t *row, const ArtworkHandle &frame);
+  void resetRowIcon(lv_obj_t *row);
   void rebuildPlaylistRows();
   void rebuildTrackRows();
   void rebuildDeviceRows();
@@ -88,6 +99,9 @@ private:
   std::string track_list_title_;
   PlaylistSummary play_only_playlist_;
   ArtworkHandle artwork_;
+  // Covers for rows currently built. LVGL keeps a raw pointer into these
+  // pixels, so an entry is only released after its row stops showing it.
+  std::deque<std::pair<std::string, ArtworkHandle>> row_art_;
   uint32_t last_interaction_ms_{0};
   uint32_t message_until_ms_{0};
   bool dimmed_{false};

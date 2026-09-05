@@ -9,6 +9,7 @@ namespace spotctl {
 
 namespace {
 constexpr uint32_t kDimAfterMs = 10U * 60U * 1000U;
+constexpr lv_coord_t kPlayerArtSize = 184;
 
 Ui *self(lv_event_t *event) {
   return static_cast<Ui *>(lv_event_get_user_data(event));
@@ -37,6 +38,7 @@ void Ui::begin(bool provisioning_mode) {
 
 void Ui::clear() {
   lv_obj_clean(lv_scr_act());
+  row_art_.clear();
   title_label_ = nullptr;
   subtitle_label_ = nullptr;
   status_label_ = nullptr;
@@ -63,6 +65,9 @@ void Ui::applyBaseStyle() {
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_set_style_text_color(screen, lv_color_hex(0xF7F7F7), 0);
   lv_obj_set_style_text_font(screen, &lv_font_montserrat_14, 0);
+  // Nothing on these screens scrolls as a whole, and a scrollable screen
+  // consumes horizontal drags as panning instead of emitting a gesture.
+  lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(screen, gestureEvent, LV_EVENT_GESTURE, this);
 
   connection_badge_ = lv_label_create(screen);
@@ -221,7 +226,10 @@ void Ui::showPlayer() {
 
   artwork_image_ = lv_img_create(lv_scr_act());
   lv_obj_set_pos(artwork_image_, 28, 20);
-  lv_obj_set_size(artwork_image_, 184, 184);
+  lv_obj_set_size(artwork_image_, kPlayerArtSize, kPlayerArtSize);
+  // The object size is the size after zoom, so a larger cover scales into
+  // this box instead of the box itself being scaled down.
+  lv_img_set_size_mode(artwork_image_, LV_IMG_SIZE_MODE_REAL);
   lv_obj_add_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
   lv_img_set_antialias(artwork_image_, true);
 
@@ -295,6 +303,170 @@ void Ui::showLibrary(bool request_data) {
   }
 }
 
+namespace {
+constexpr size_t kMaximumRowThumbnails = 24;
+} // namespace
+
+std::string Ui::rowKey(size_t encoded) const {
+  if (encoded == 0) {
+    return {};
+  }
+  const size_t index = encoded - 1;
+  if (screen_ == Screen::Library) {
+    return index < playlists_.size() ? playlists_[index].id : std::string();
+  }
+  if (screen_ == Screen::Playlist) {
+    return index < tracks_.size() ? tracks_[index].uri : std::string();
+  }
+  return {};
+}
+
+lv_obj_t *Ui::rowForKey(const std::string &key) const {
+  if (list_ == nullptr || key.empty()) {
+    return nullptr;
+  }
+  const uint32_t children = lv_obj_get_child_cnt(list_);
+  for (uint32_t child = 0; child < children; ++child) {
+    lv_obj_t *row = lv_obj_get_child(list_, child);
+    if (row == nullptr) {
+      continue;
+    }
+    const size_t encoded =
+        reinterpret_cast<size_t>(lv_obj_get_user_data(row));
+    if (rowKey(encoded) == key) {
+      return row;
+    }
+  }
+  return nullptr;
+}
+
+void Ui::setRowThumbnail(lv_obj_t *row, const ArtworkHandle &frame) {
+  if (row == nullptr || !frame || frame->image.header.w == 0) {
+    return;
+  }
+  lv_obj_t *icon = lv_obj_get_child(row, 0);
+  if (icon == nullptr || !lv_obj_check_type(icon, &lv_img_class)) {
+    return;
+  }
+  lv_img_set_src(icon, &frame->image);
+  lv_img_set_antialias(icon, true);
+  // Decoded at row scale already, so it is drawn 1:1 with no transform: no
+  // pivot or zoom to get wrong, and nothing to rescale on every redraw.
+  lv_obj_set_size(icon, static_cast<lv_coord_t>(frame->image.header.w),
+                  static_cast<lv_coord_t>(frame->image.header.h));
+}
+
+void Ui::resetRowIcon(lv_obj_t *row) {
+  if (row == nullptr) {
+    return;
+  }
+  lv_obj_t *icon = lv_obj_get_child(row, 0);
+  if (icon == nullptr || !lv_obj_check_type(icon, &lv_img_class)) {
+    return;
+  }
+  lv_img_set_src(icon, screen_ == Screen::Library ? LV_SYMBOL_AUDIO
+                                                  : LV_SYMBOL_PLAY);
+  lv_img_set_zoom(icon, 256);
+  lv_obj_set_size(icon, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+}
+
+const ArtworkHandle *Ui::storedThumbnail(const std::string &key) const {
+  for (const auto &entry : row_art_) {
+    if (entry.first == key) {
+      return &entry.second;
+    }
+  }
+  return nullptr;
+}
+
+void Ui::storeThumbnail(const std::string &key, const ArtworkHandle &frame) {
+  for (auto &entry : row_art_) {
+    if (entry.first == key) {
+      entry.second = frame;
+      return;
+    }
+  }
+  while (row_art_.size() >= kMaximumRowThumbnails) {
+    // Detach the image before the pixels it points at are released.
+    resetRowIcon(rowForKey(row_art_.front().first));
+    row_art_.pop_front();
+  }
+  row_art_.emplace_back(key, frame);
+}
+
+void Ui::applyThumbnail(const std::string &key, const ArtworkHandle &frame) {
+  if (key.empty() || !frame) {
+    return;
+  }
+  storeThumbnail(key, frame);
+  setRowThumbnail(rowForKey(key), frame);
+}
+
+void Ui::applyStoredThumbnails() {
+  if (list_ == nullptr) {
+    return;
+  }
+  const uint32_t children = lv_obj_get_child_cnt(list_);
+  for (uint32_t child = 0; child < children; ++child) {
+    lv_obj_t *row = lv_obj_get_child(list_, child);
+    if (row == nullptr) {
+      continue;
+    }
+    const std::string key =
+        rowKey(reinterpret_cast<size_t>(lv_obj_get_user_data(row)));
+    if (key.empty()) {
+      continue;
+    }
+    if (const ArtworkHandle *frame = storedThumbnail(key)) {
+      setRowThumbnail(row, *frame);
+    }
+  }
+}
+
+void Ui::requestVisibleThumbnails() {
+  if (list_ == nullptr ||
+      (screen_ != Screen::Library && screen_ != Screen::Playlist)) {
+    return;
+  }
+  // Coordinates are only meaningful once the layout has been recalculated.
+  lv_obj_update_layout(list_);
+  lv_area_t viewport;
+  lv_obj_get_coords(list_, &viewport);
+
+  // Whatever was queued belonged to the previous window; those rows may have
+  // scrolled away, and fetching them would delay the ones now on screen.
+  network_.resetThumbnailRequests();
+  const uint32_t children = lv_obj_get_child_cnt(list_);
+  for (uint32_t child = 0; child < children; ++child) {
+    lv_obj_t *row = lv_obj_get_child(list_, child);
+    if (row == nullptr) {
+      continue;
+    }
+    const size_t encoded =
+        reinterpret_cast<size_t>(lv_obj_get_user_data(row));
+    const std::string key = rowKey(encoded);
+    if (key.empty() || storedThumbnail(key) != nullptr) {
+      continue;
+    }
+    lv_area_t area;
+    lv_obj_get_coords(row, &area);
+    if (!rowIntersectsViewport(area.y1, area.y2, viewport.y1, viewport.y2)) {
+      continue;
+    }
+    const size_t index = encoded - 1;
+    const std::string url =
+        screen_ == Screen::Library
+            ? (index < playlists_.size() ? playlists_[index].thumbnail_url
+                                         : std::string())
+            : (index < tracks_.size() ? tracks_[index].thumbnail_url
+                                      : std::string());
+    if (url.empty()) {
+      continue;
+    }
+    network_.requestThumbnail(key, url);
+  }
+}
+
 void Ui::rebuildPlaylistRows() {
   if (list_ == nullptr) {
     return;
@@ -319,6 +491,8 @@ void Ui::rebuildPlaylistRows() {
     lv_obj_add_event_cb(row, playlistEvent, LV_EVENT_CLICKED, this);
   }
   lv_obj_scroll_to_y(list_, scroll_y, LV_ANIM_OFF);
+  applyStoredThumbnails();
+  requestVisibleThumbnails();
 }
 
 void Ui::showTracks(const std::string &title) {
@@ -390,6 +564,8 @@ void Ui::rebuildTrackRows() {
     lv_obj_add_event_cb(row, trackEvent, LV_EVENT_CLICKED, this);
   }
   lv_obj_scroll_to_y(list_, scroll_y, LV_ANIM_OFF);
+  applyStoredThumbnails();
+  requestVisibleThumbnails();
 }
 
 void Ui::showDevices() {
@@ -536,11 +712,15 @@ void Ui::updatePlaybackWidgets() {
     lv_label_set_text(duration_label_, clockText(playback_.item.duration_ms).c_str());
     if (artwork_) {
       lv_img_set_src(artwork_image_, &artwork_->image);
-      const uint16_t zoom = artwork_->image.header.w > 0
-                                ? static_cast<uint16_t>(184U * 256U /
-                                                        artwork_->image.header.w)
-                                : 256;
-      lv_img_set_zoom(artwork_image_, zoom);
+      const lv_coord_t source_width =
+          static_cast<lv_coord_t>(artwork_->image.header.w);
+      if (source_width > 0) {
+        // REAL size mode centres the zoomed cover in the box, so the default
+        // centre pivot is the correct one here.
+        lv_img_set_zoom(artwork_image_,
+                        static_cast<uint16_t>(kPlayerArtSize * 256 /
+                                              source_width));
+      }
       lv_obj_clear_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
       lv_obj_add_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
     } else {
@@ -671,6 +851,9 @@ void Ui::handle(const NetworkEvent &event) {
     devices_ = event.devices;
     showDevices();
     break;
+  case NetworkEventType::Artwork:
+    applyThumbnail(event.key, event.artwork);
+    break;
   case NetworkEventType::Error: {
     std::string message = event.error.user_message;
     if (event.error.category == ErrorCategory::RateLimited &&
@@ -785,7 +968,11 @@ void Ui::spotifyLinkEvent(lv_event_t *event) { self(event)->showQrCode(); }
 void Ui::gestureEvent(lv_event_t *event) {
   Ui *ui = self(event);
   const lv_dir_t direction = lv_indev_get_gesture_dir(lv_indev_get_act());
-  if (ui->screen_ == Screen::Player && direction == LV_DIR_TOP) {
+  if (ui->screen_ == Screen::Player && direction == LV_DIR_LEFT) {
+    ui->send(UiCommand{UiCommandType::Next});
+  } else if (ui->screen_ == Screen::Player && direction == LV_DIR_RIGHT) {
+    ui->send(UiCommand{UiCommandType::Previous});
+  } else if (ui->screen_ == Screen::Player && direction == LV_DIR_TOP) {
     ui->showLibrary(true);
   } else if ((ui->screen_ == Screen::Library ||
               ui->screen_ == Screen::Playlist) &&
@@ -869,7 +1056,12 @@ void Ui::playPlaylistEvent(lv_event_t *event) {
 
 void Ui::listScrollEvent(lv_event_t *event) {
   Ui *ui = self(event);
-  if (ui->list_ == nullptr || lv_obj_get_scroll_bottom(ui->list_) > 8) {
+  if (ui->list_ == nullptr) {
+    return;
+  }
+  // The window moved, so a different set of rows needs covers.
+  ui->requestVisibleThumbnails();
+  if (lv_obj_get_scroll_bottom(ui->list_) > 8) {
     return;
   }
   if (ui->screen_ == Screen::Library && ui->playlists_have_more_) {

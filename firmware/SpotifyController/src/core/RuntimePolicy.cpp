@@ -78,4 +78,12 @@ void applyOptimisticPlayback(PlaybackSnapshot &playback,
   }
 }
 
+bool rowIntersectsViewport(int32_t row_top, int32_t row_bottom,
+                           int32_t viewport_top, int32_t viewport_bottom) {
+  if (row_bottom < row_top || viewport_bottom < viewport_top) {
+    return false;
+  }
+  return row_bottom >= viewport_top && row_top <= viewport_bottom;
+}
+
 } // namespace spotctl

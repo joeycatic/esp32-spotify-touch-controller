@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -318,6 +319,177 @@ void spotifyRequestEncodingProtectsQueryAndJsonBoundaries() {
             std::string("{\"uris\":[\"spotify:track:a\",\"spotify:track:b\"]}"));
 }
 
+void bodylessWriteRequestsMustDeclareZeroContentLength() {
+  // Spotify's edge answers 411 Length Required when a PUT or POST arrives with
+  // neither Content-Length nor Transfer-Encoding, and the HTML error body then
+  // parses as no Spotify error at all.
+  EXPECT_TRUE(spotctl::requiresZeroContentLength("PUT", ""));
+  EXPECT_TRUE(spotctl::requiresZeroContentLength("POST", ""));
+  EXPECT_TRUE(spotctl::requiresZeroContentLength("DELETE", ""));
+
+  // A body of its own already makes HTTPClient emit Content-Length.
+  EXPECT_FALSE(spotctl::requiresZeroContentLength("PUT", "{\"play\":false}"));
+
+  // Reads carry no entity, so no length header belongs on them.
+  EXPECT_FALSE(spotctl::requiresZeroContentLength("GET", ""));
+  EXPECT_FALSE(spotctl::requiresZeroContentLength("HEAD", ""));
+}
+
+void parsersPickTheSmallestCoverForRowThumbnails() {
+  // Spotify orders images largest first; a row thumbnail is ~40px, so the
+  // smallest variant is both enough and far cheaper to fetch.
+  const std::string json = R"json({"total":1,"next":null,"items":[
+    {"id":"mine","uri":"spotify:playlist:mine","name":"My Mix","collaborative":false,
+      "owner":{"account_id":"account-1","display_name":"Joey"},
+      "images":[{"url":"big.jpg","width":640},{"url":"mid.jpg","width":300},
+                {"url":"small.jpg","width":60}]}
+  ]})json";
+  spotctl::SpotifyPage<spotctl::PlaylistSummary> page;
+  EXPECT_TRUE(spotctl::parsePlaylists(json, "account-1", page));
+  EXPECT_EQ(page.items[0].artwork_url, std::string("mid.jpg"));
+  EXPECT_EQ(page.items[0].thumbnail_url, std::string("small.jpg"));
+
+  // Mosaic covers arrive without width fields, ordered largest first.
+  const std::string mosaic = R"json({"total":1,"next":null,"items":[
+    {"id":"m","uri":"spotify:playlist:m","name":"Mosaic","collaborative":false,
+      "owner":{"account_id":"account-1","display_name":"Joey"},
+      "images":[{"url":"m640.jpg"},{"url":"m60.jpg"}]}
+  ]})json";
+  spotctl::SpotifyPage<spotctl::PlaylistSummary> mosaic_page;
+  EXPECT_TRUE(spotctl::parsePlaylists(mosaic, "account-1", mosaic_page));
+  EXPECT_EQ(mosaic_page.items[0].thumbnail_url, std::string("m60.jpg"));
+
+  // A coverless playlist leaves the row on its symbol.
+  const std::string bare = R"json({"total":1,"next":null,"items":[
+    {"id":"b","uri":"spotify:playlist:b","name":"Bare","collaborative":false,
+      "owner":{"account_id":"account-1","display_name":"Joey"},"images":[]}
+  ]})json";
+  spotctl::SpotifyPage<spotctl::PlaylistSummary> bare_page;
+  EXPECT_TRUE(spotctl::parsePlaylists(bare, "account-1", bare_page));
+  EXPECT_TRUE(bare_page.items[0].thumbnail_url.empty());
+}
+
+void trackRowsCarryTheirOwnThumbnail() {
+  const std::string json = R"json({"total":1,"next":null,"items":[
+    {"item":{"uri":"spotify:track:1","name":"Song","duration_ms":1000,
+      "is_playable":true,"artists":[{"name":"Band"}],
+      "album":{"images":[{"url":"a640.jpg","width":640},{"url":"a300.jpg","width":300},
+                         {"url":"a64.jpg","width":64}]}}}
+  ]})json";
+  spotctl::SpotifyPage<spotctl::TrackSummary> page;
+  EXPECT_TRUE(spotctl::parsePlaylistItems(json, 0, page));
+  EXPECT_EQ(page.items.size(), static_cast<size_t>(1));
+  if (page.items.size() == 1) {
+    EXPECT_EQ(page.items[0].artwork_url, std::string("a300.jpg"));
+    EXPECT_EQ(page.items[0].thumbnail_url, std::string("a64.jpg"));
+  }
+}
+
+void hostExtractionGuardsConnectionReuse() {
+  // Reusing a keep-alive socket across hosts would send a request down the
+  // wrong TLS connection, so the fetcher compares hosts before reusing.
+  EXPECT_EQ(spotctl::hostOf("https://i.scdn.co/image/ab12"),
+            std::string("i.scdn.co"));
+  EXPECT_EQ(spotctl::hostOf("https://mosaic.scdn.co/640/abc"),
+            std::string("mosaic.scdn.co"));
+  EXPECT_EQ(spotctl::hostOf("https://i.scdn.co"), std::string("i.scdn.co"));
+  EXPECT_EQ(spotctl::hostOf("https://i.scdn.co:8443/x"),
+            std::string("i.scdn.co"));
+  EXPECT_EQ(spotctl::hostOf("not a url"), std::string());
+  EXPECT_EQ(spotctl::hostOf(""), std::string());
+}
+
+void onlyRowsTouchingTheViewportAreFetched() {
+  // Viewport spanning display rows 44..266.
+  EXPECT_TRUE(spotctl::rowIntersectsViewport(100, 152, 44, 266));
+
+  // Straddling either edge still counts: the row is partly visible.
+  EXPECT_TRUE(spotctl::rowIntersectsViewport(20, 60, 44, 266));
+  EXPECT_TRUE(spotctl::rowIntersectsViewport(250, 302, 44, 266));
+
+  // Scrolled well past, in either direction, is skipped.
+  EXPECT_FALSE(spotctl::rowIntersectsViewport(-60, -8, 44, 266));
+  EXPECT_FALSE(spotctl::rowIntersectsViewport(300, 352, 44, 266));
+
+  // Touching exactly at an edge is visible; one pixel beyond is not.
+  EXPECT_TRUE(spotctl::rowIntersectsViewport(-8, 44, 44, 266));
+  EXPECT_FALSE(spotctl::rowIntersectsViewport(-8, 43, 44, 266));
+
+  // Inverted or unmeasured geometry asks for nothing.
+  EXPECT_FALSE(spotctl::rowIntersectsViewport(100, 40, 44, 266));
+  EXPECT_FALSE(spotctl::rowIntersectsViewport(100, 152, 266, 44));
+}
+
+void thumbnailCacheEvictsLeastRecentlyUsed() {
+  spotctl::LruCache<std::shared_ptr<int>> cache(3);
+  cache.put("a", std::make_shared<int>(1));
+  cache.put("b", std::make_shared<int>(2));
+  cache.put("c", std::make_shared<int>(3));
+
+  // Touching "a" makes "b" the least recently used.
+  EXPECT_TRUE(cache.get("a") != nullptr);
+  cache.put("d", std::make_shared<int>(4));
+  EXPECT_EQ(cache.size(), static_cast<size_t>(3));
+  EXPECT_TRUE(cache.get("b") == nullptr);
+  EXPECT_TRUE(cache.get("a") != nullptr);
+  EXPECT_TRUE(cache.get("d") != nullptr);
+
+  // A remembered failure is a stored empty value, not a miss, so a broken
+  // cover is not re-fetched on every scroll.
+  cache.put("bad", std::shared_ptr<int>());
+  EXPECT_TRUE(cache.contains("bad"));
+  EXPECT_TRUE(*cache.get("bad") == nullptr);
+}
+
+void thumbnailQueueDropsDuplicatesAndStaleWindows() {
+  spotctl::ThumbnailQueue queue(4);
+  EXPECT_TRUE(queue.push("k1", "u1"));
+  EXPECT_TRUE(queue.push("k2", "u2"));
+  EXPECT_FALSE(queue.push("k1", "u1"));
+  EXPECT_EQ(queue.size(), static_cast<size_t>(2));
+
+  std::string key;
+  std::string url;
+  EXPECT_TRUE(queue.pop(key, url));
+  EXPECT_EQ(key, std::string("k1"));
+  EXPECT_EQ(url, std::string("u1"));
+
+  // Scrolling away abandons rows that never got fetched.
+  queue.clear();
+  EXPECT_EQ(queue.size(), static_cast<size_t>(0));
+  EXPECT_FALSE(queue.pop(key, url));
+
+  // The queue is bounded so a long list cannot grow it without limit.
+  EXPECT_TRUE(queue.push("a", "ua"));
+  EXPECT_TRUE(queue.push("b", "ub"));
+  EXPECT_TRUE(queue.push("c", "uc"));
+  EXPECT_TRUE(queue.push("d", "ud"));
+  EXPECT_FALSE(queue.push("e", "ue"));
+  EXPECT_EQ(queue.size(), static_cast<size_t>(4));
+}
+
+void unexplainedFailuresNameTheStatusTheyGotBack() {
+  // Spotify's own message wins whenever the body carries one.
+  EXPECT_EQ(spotctl::parseSpotifyError(
+                404, R"json({"error":{"status":404,"message":"No active device"}})json")
+                .user_message,
+            std::string("No active device"));
+
+  // A gateway error body is HTML, not Spotify JSON, so the status is all the
+  // detail there is - and it is what makes the failure diagnosable.
+  EXPECT_EQ(spotctl::parseSpotifyError(411, "<html>Length Required</html>")
+                .user_message,
+            std::string("Spotify request failed (HTTP 411)"));
+  EXPECT_EQ(spotctl::parseSpotifyError(502, "").user_message,
+            std::string("Spotify request failed (HTTP 502)"));
+
+  // A negative status is a connection that never produced a response at all.
+  EXPECT_EQ(spotctl::parseSpotifyError(-1, "").user_message,
+            std::string("Could not reach Spotify"));
+  EXPECT_EQ(spotctl::parseSpotifyError(0, "").user_message,
+            std::string("Could not reach Spotify"));
+}
+
 } // namespace
 
 int main() {
@@ -336,6 +508,14 @@ int main() {
   trackParserSkipsUnavailableItemsAndKeepsPositions();
   deviceAndErrorParsersHandleSparseResponses();
   spotifyRequestEncodingProtectsQueryAndJsonBoundaries();
+  bodylessWriteRequestsMustDeclareZeroContentLength();
+  parsersPickTheSmallestCoverForRowThumbnails();
+  trackRowsCarryTheirOwnThumbnail();
+  hostExtractionGuardsConnectionReuse();
+  onlyRowsTouchingTheViewportAreFetched();
+  unexplainedFailuresNameTheStatusTheyGotBack();
+  thumbnailCacheEvictsLeastRecentlyUsed();
+  thumbnailQueueDropsDuplicatesAndStaleWindows();
 
   if (failures != 0) {
     std::cerr << failures << " assertion(s) failed\n";

@@ -8,6 +8,7 @@
 #include <deque>
 #include <string>
 
+#include "../core/RuntimePolicy.h"
 #include "../spotify/ArtworkManager.h"
 #include "../spotify/SpotifyClient.h"
 #include "../storage/ConfigStore.h"
@@ -24,6 +25,11 @@ public:
   bool pollEvent(NetworkEvent &event);
   bool running() const { return running_; }
 
+  // Row covers travel outside the command queue so a screenful of them can
+  // never push a waiting play or pause command out of it.
+  void resetThumbnailRequests();
+  bool requestThumbnail(const std::string &key, const std::string &url);
+
 private:
   static void taskEntry(void *context);
   void run();
@@ -34,6 +40,8 @@ private:
   void pollPlayback();
   void process(const UiCommand &command);
   void publishFailure(const SpotifyError &error);
+  bool popThumbnail(std::string &key, std::string &url);
+  void serviceThumbnails();
   void scheduleAfterRequest(bool success, const SpotifyError &error);
 
   ConfigStore &store_;
@@ -48,6 +56,8 @@ private:
   std::atomic<bool> accepting_commands_{false};
   PlaybackSnapshot playback_;
   std::string artwork_uri_;
+  ThumbnailQueue thumbnail_requests_{16};
+  LruCache<ArtworkHandle> thumbnails_{32};
   std::string selected_playlist_id_;
   std::string selected_context_uri_;
   std::string selected_title_;

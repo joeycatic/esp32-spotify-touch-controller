@@ -46,6 +46,7 @@ enum class NetworkEventType {
   Playlists,
   Tracks,
   Devices,
+  Artwork,
   Error,
   Status,
 };
@@ -58,6 +59,8 @@ struct NetworkEvent {
   std::vector<PlaybackDevice> devices;
   SpotifyError error;
   ArtworkHandle artwork;
+  // Row this artwork belongs to: playlist id, or track uri.
+  std::string key;
   bool replace{false};
   bool has_more{false};
   bool liked{false};

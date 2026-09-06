@@ -113,6 +113,14 @@ void NetworkService::serviceThumbnails() {
   artwork_.releaseConnection();
 }
 
+void NetworkService::prepareForNetworkWork(NetworkWork work) {
+  if (networkWorkNeedsArtworkRelease(work)) {
+    // A kept-alive artwork TLS connection reserves roughly 50 KB of internal
+    // heap. Spotify's API needs that block for its own TLS handshake.
+    artwork_.releaseConnection();
+  }
+}
+
 void NetworkService::clearCommands() {
   if (mutex_ == nullptr ||
       xSemaphoreTake(mutex_, pdMS_TO_TICKS(20)) != pdTRUE) {
@@ -311,6 +319,7 @@ void NetworkService::publishFailure(const SpotifyError &error) {
 }
 
 void NetworkService::pollPlayback() {
+  prepareForNetworkWork(NetworkWork::PlaybackPoll);
   SpotifyError error;
   PlaybackSnapshot snapshot;
   if (!spotify_.getPlayback(snapshot, error)) {
@@ -340,6 +349,7 @@ void NetworkService::pollPlayback() {
 }
 
 void NetworkService::process(const UiCommand &command) {
+  prepareForNetworkWork(NetworkWork::SpotifyApi);
   SpotifyError error;
   bool success = false;
   switch (command.type) {

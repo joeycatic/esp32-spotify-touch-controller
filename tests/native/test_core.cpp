@@ -10,6 +10,8 @@
 #include "provision/ProvisioningValidation.h"
 #include "spotify/SpotifyParser.h"
 #include "spotify/SpotifyRequest.h"
+#include "ui/AnimationPolicy.h"
+#include "ui/EventBinding.h"
 
 namespace {
 
@@ -183,6 +185,78 @@ void offlineCommandsAreRejectedAndOptimisticStateIsCoherent() {
   spotctl::applyOptimisticPlayback(playback,
                                    spotctl::PlaybackMutation::CycleRepeat);
   EXPECT_EQ(playback.repeat, spotctl::RepeatMode::Off);
+}
+
+void spotifyApiWorkPreemptsThumbnailConnections() {
+  EXPECT_TRUE(spotctl::networkWorkNeedsArtworkRelease(
+      spotctl::NetworkWork::SpotifyApi));
+  EXPECT_TRUE(spotctl::networkWorkNeedsArtworkRelease(
+      spotctl::NetworkWork::PlaybackPoll));
+  EXPECT_FALSE(spotctl::networkWorkNeedsArtworkRelease(
+      spotctl::NetworkWork::Thumbnail));
+}
+
+void playlistPrefetchIsReusedAndFailedLoadsCanRetry() {
+  spotctl::PlaylistLoadState state;
+
+  EXPECT_TRUE(state.shouldRequest(0));
+  state.markRequested();
+  EXPECT_FALSE(state.shouldRequest(0));
+
+  state.markLoaded();
+  EXPECT_FALSE(state.shouldRequest(20));
+
+  spotctl::PlaylistLoadState failed;
+  failed.markRequested();
+  failed.markFailed();
+  EXPECT_TRUE(failed.shouldRequest(0));
+}
+
+void rebuildingAViewKeepsOneGestureHandler() {
+  size_t registered_handlers = 0;
+  const auto rebuild_view = [&registered_handlers]() {
+    spotctl::bindSingleEventHandler(
+        [&registered_handlers]() {
+          if (registered_handlers == 0) {
+            return false;
+          }
+          --registered_handlers;
+          return true;
+        },
+        [&registered_handlers]() { ++registered_handlers; });
+  };
+
+  rebuild_view();
+  EXPECT_EQ(registered_handlers, static_cast<size_t>(1));
+
+  rebuild_view();
+  EXPECT_EQ(registered_handlers, static_cast<size_t>(1));
+}
+
+void swipeFeedbackMovesWithPlaybackDirectionAndStaysShort() {
+  const spotctl::SwipeAnimationPlan next =
+      spotctl::swipeAnimationPlan(spotctl::SwipeDirection::Next);
+  const spotctl::SwipeAnimationPlan previous =
+      spotctl::swipeAnimationPlan(spotctl::SwipeDirection::Previous);
+
+  EXPECT_TRUE(next.offset_px < 0);
+  EXPECT_TRUE(previous.offset_px > 0);
+  EXPECT_EQ(std::abs(next.offset_px), std::abs(previous.offset_px));
+  EXPECT_TRUE(next.outward_ms > 0);
+  EXPECT_TRUE(next.return_ms > 0);
+  EXPECT_TRUE(next.outward_ms + next.return_ms <= 250);
+  EXPECT_EQ(next.outward_ms, previous.outward_ms);
+  EXPECT_EQ(next.return_ms, previous.return_ms);
+}
+
+void buttonFeedbackIsSubtleAndBrief() {
+  const spotctl::ButtonAnimationPlan button = spotctl::buttonAnimationPlan();
+
+  EXPECT_TRUE(button.pressed_translate_y_px > 0);
+  EXPECT_TRUE(button.pressed_translate_y_px <= 2);
+  EXPECT_TRUE(button.press_ms > 0);
+  EXPECT_TRUE(button.release_ms >= button.press_ms);
+  EXPECT_TRUE(button.press_ms + button.release_ms <= 200);
 }
 
 void provisioningValidationMatchesTheDesktopUtility() {
@@ -502,6 +576,11 @@ int main() {
   spotifyErrorsMapToActionableCategories();
   oauthTokenErrorsRequireReauthorization();
   offlineCommandsAreRejectedAndOptimisticStateIsCoherent();
+  spotifyApiWorkPreemptsThumbnailConnections();
+  playlistPrefetchIsReusedAndFailedLoadsCanRetry();
+  rebuildingAViewKeepsOneGestureHandler();
+  swipeFeedbackMovesWithPlaybackDirectionAndStaysShort();
+  buttonFeedbackIsSubtleAndBrief();
   provisioningValidationMatchesTheDesktopUtility();
   playbackParserHandlesTracksAndEpisodes();
   playlistParserAppliesOwnershipRestriction();

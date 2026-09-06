@@ -20,6 +20,22 @@ ErrorCategory classifySpotifyError(int http_status, const std::string &reason);
 bool commandAccepted(bool service_running, bool wifi_connected,
                      bool rate_limited);
 
+enum class NetworkWork { SpotifyApi, PlaybackPoll, Thumbnail };
+bool networkWorkNeedsArtworkRelease(NetworkWork work);
+
+class PlaylistLoadState {
+public:
+  bool shouldRequest(size_t cached_playlist_count) const {
+    return cached_playlist_count == 0 && !request_pending_;
+  }
+  void markRequested() { request_pending_ = true; }
+  void markLoaded() { request_pending_ = false; }
+  void markFailed() { request_pending_ = false; }
+
+private:
+  bool request_pending_{false};
+};
+
 enum class PlaybackMutation { TogglePlaying, ToggleShuffle, CycleRepeat };
 void applyOptimisticPlayback(PlaybackSnapshot &playback,
                              PlaybackMutation mutation);

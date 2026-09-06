@@ -4,12 +4,39 @@
 #include <cstdio>
 
 #include "../core/RuntimePolicy.h"
+#include "AnimationPolicy.h"
+#include "EventBinding.h"
 
 namespace spotctl {
 
 namespace {
 constexpr uint32_t kDimAfterMs = 10U * 60U * 1000U;
 constexpr lv_coord_t kPlayerArtSize = 184;
+
+const lv_style_transition_dsc_t *buttonTransition(bool pressed) {
+  static lv_style_prop_t properties[] = {LV_STYLE_BG_COLOR,
+                                         LV_STYLE_TRANSLATE_Y,
+                                         LV_STYLE_PROP_INV};
+  static lv_style_transition_dsc_t press_transition;
+  static lv_style_transition_dsc_t release_transition;
+  static bool initialized = false;
+  if (!initialized) {
+    const ButtonAnimationPlan plan = buttonAnimationPlan();
+    lv_style_transition_dsc_init(&press_transition, properties,
+                                 lv_anim_path_ease_out, plan.press_ms, 0,
+                                 nullptr);
+    lv_style_transition_dsc_init(&release_transition, properties,
+                                 lv_anim_path_ease_out, plan.release_ms, 0,
+                                 nullptr);
+    initialized = true;
+  }
+  return pressed ? &press_transition : &release_transition;
+}
+
+void setTranslateX(void *object, int32_t value) {
+  lv_obj_set_style_translate_x(static_cast<lv_obj_t *>(object),
+                               static_cast<lv_coord_t>(value), 0);
+}
 
 Ui *self(lv_event_t *event) {
   return static_cast<Ui *>(lv_event_get_user_data(event));
@@ -68,7 +95,14 @@ void Ui::applyBaseStyle() {
   // Nothing on these screens scrolls as a whole, and a scrollable screen
   // consumes horizontal drags as panning instead of emitting a gesture.
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_event_cb(screen, gestureEvent, LV_EVENT_GESTURE, this);
+  bindSingleEventHandler(
+      [screen, this]() {
+        return lv_obj_remove_event_cb_with_user_data(screen, gestureEvent,
+                                                     this);
+      },
+      [screen, this]() {
+        lv_obj_add_event_cb(screen, gestureEvent, LV_EVENT_GESTURE, this);
+      });
 
   connection_badge_ = lv_label_create(screen);
   lv_label_set_text(connection_badge_, "OFFLINE");
@@ -95,6 +129,12 @@ lv_obj_t *Ui::makeButton(lv_obj_t *parent, const char *symbol, lv_coord_t x,
   lv_obj_set_style_radius(button, height / 2, 0);
   lv_obj_set_style_bg_color(button, lv_color_hex(0x171A1F), 0);
   lv_obj_set_style_bg_color(button, lv_color_hex(0x1ED760), LV_STATE_PRESSED);
+  const ButtonAnimationPlan animation = buttonAnimationPlan();
+  lv_obj_set_style_translate_y(button, animation.pressed_translate_y_px,
+                               LV_STATE_PRESSED);
+  lv_obj_set_style_transition(button, buttonTransition(false), 0);
+  lv_obj_set_style_transition(button, buttonTransition(true),
+                              LV_STATE_PRESSED);
   lv_obj_set_style_shadow_width(button, 0, 0);
   lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED, this);
   lv_obj_t *label = lv_label_create(button);
@@ -299,7 +339,16 @@ void Ui::showLibrary(bool request_data) {
   rebuildPlaylistRows();
   updateMiniPlayer();
   if (request_data) {
-    send(UiCommand{UiCommandType::LoadPlaylists});
+    requestPlaylists();
+  }
+}
+
+void Ui::requestPlaylists() {
+  if (!playlist_load_state_.shouldRequest(playlists_.size())) {
+    return;
+  }
+  if (send(UiCommand{UiCommandType::LoadPlaylists})) {
+    playlist_load_state_.markRequested();
   }
 }
 
@@ -492,7 +541,9 @@ void Ui::rebuildPlaylistRows() {
   }
   lv_obj_scroll_to_y(list_, scroll_y, LV_ANIM_OFF);
   applyStoredThumbnails();
-  requestVisibleThumbnails();
+  // Row-image TLS handshakes fragment the ESP32-S3's internal heap until the
+  // Spotify API can no longer allocate its own TLS session. Keep the symbols
+  // here; full-size player artwork remains enabled.
 }
 
 void Ui::showTracks(const std::string &title) {
@@ -565,7 +616,6 @@ void Ui::rebuildTrackRows() {
   }
   lv_obj_scroll_to_y(list_, scroll_y, LV_ANIM_OFF);
   applyStoredThumbnails();
-  requestVisibleThumbnails();
 }
 
 void Ui::showDevices() {
@@ -758,6 +808,29 @@ void Ui::updateMiniPlayer() {
   }
 }
 
+void Ui::animatePlayerSwipe(SwipeDirection direction) {
+  if (screen_ != Screen::Player) {
+    return;
+  }
+  const SwipeAnimationPlan plan = swipeAnimationPlan(direction);
+  for (lv_obj_t *object : {artwork_image_, artwork_placeholder_, title_label_,
+                           subtitle_label_}) {
+    if (object == nullptr) {
+      continue;
+    }
+    lv_anim_del(object, setTranslateX);
+    lv_anim_t animation;
+    lv_anim_init(&animation);
+    lv_anim_set_var(&animation, object);
+    lv_anim_set_exec_cb(&animation, setTranslateX);
+    lv_anim_set_values(&animation, 0, plan.offset_px);
+    lv_anim_set_time(&animation, plan.outward_ms);
+    lv_anim_set_playback_time(&animation, plan.return_ms);
+    lv_anim_set_path_cb(&animation, lv_anim_path_ease_out);
+    lv_anim_start(&animation);
+  }
+}
+
 void Ui::showMessage(const std::string &message, bool error) {
   destroyMessage();
   message_label_ = lv_label_create(lv_scr_act());
@@ -788,6 +861,9 @@ void Ui::handle(const NetworkEvent &event) {
   switch (event.type) {
   case NetworkEventType::Authorized:
     showMessage("Spotify connected");
+    // Warm the first page while the player is already usable. The next swipe
+    // can render the cached rows immediately instead of waiting on the API.
+    requestPlaylists();
     break;
   case NetworkEventType::AuthorizationRequired:
     provisioning_screen_ = true;
@@ -817,6 +893,7 @@ void Ui::handle(const NetworkEvent &event) {
     }
     break;
   case NetworkEventType::Playlists:
+    playlist_load_state_.markLoaded();
     if (event.replace) {
       playlists_.clear();
     }
@@ -855,6 +932,7 @@ void Ui::handle(const NetworkEvent &event) {
     applyThumbnail(event.key, event.artwork);
     break;
   case NetworkEventType::Error: {
+    playlist_load_state_.markFailed();
     std::string message = event.error.user_message;
     if (event.error.category == ErrorCategory::RateLimited &&
         event.error.retry_after_ms > 0) {
@@ -969,9 +1047,13 @@ void Ui::gestureEvent(lv_event_t *event) {
   Ui *ui = self(event);
   const lv_dir_t direction = lv_indev_get_gesture_dir(lv_indev_get_act());
   if (ui->screen_ == Screen::Player && direction == LV_DIR_LEFT) {
-    ui->send(UiCommand{UiCommandType::Next});
+    if (ui->send(UiCommand{UiCommandType::Next})) {
+      ui->animatePlayerSwipe(SwipeDirection::Next);
+    }
   } else if (ui->screen_ == Screen::Player && direction == LV_DIR_RIGHT) {
-    ui->send(UiCommand{UiCommandType::Previous});
+    if (ui->send(UiCommand{UiCommandType::Previous})) {
+      ui->animatePlayerSwipe(SwipeDirection::Previous);
+    }
   } else if (ui->screen_ == Screen::Player && direction == LV_DIR_TOP) {
     ui->showLibrary(true);
   } else if ((ui->screen_ == Screen::Library ||
@@ -1059,8 +1141,6 @@ void Ui::listScrollEvent(lv_event_t *event) {
   if (ui->list_ == nullptr) {
     return;
   }
-  // The window moved, so a different set of rows needs covers.
-  ui->requestVisibleThumbnails();
   if (lv_obj_get_scroll_bottom(ui->list_) > 8) {
     return;
   }

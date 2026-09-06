@@ -2,6 +2,36 @@
 
 All notable changes to this project are documented here.
 
+## [1.0.0-rc.2] - 2026-09-06
+
+Second release candidate with physical-device fixes and interaction polish.
+
+### Added
+
+- Immediate button feedback and short directional animations for previous/next swipes.
+- TLS error codes and heap diagnostics in serial output for failed Spotify connections.
+- A design for extending the firmware to additional board profiles.
+
+### Changed
+
+- Prefetch the first playlist page after authorization and reuse it when the library opens.
+- Prioritize Spotify API and playback work over artwork network activity.
+- Use lightweight audio/play symbols on playlist and song rows. Repeated row-artwork TLS handshakes fragmented internal memory on the ESP32-S3; full-size Now Playing artwork remains enabled.
+
+### Fixed
+
+- Release artwork connections before Spotify API handshakes so their TLS memory is available.
+- Allow failed playlist prefetches to retry instead of leaving the library permanently pending.
+- Keep a single screen gesture handler across view rebuilds.
+- Send an explicit zero content length for bodyless Spotify write requests.
+- Diagnose inaccessible serial ports before starting browser authorization.
+
+### Validation
+
+- Native C++ tests, Python provisioning tests, and the complete firmware build pass.
+- Firmware upload and flash verification pass on the Waveshare ESP32-S3-Touch-LCD-2.
+- The remaining physical interaction and soak checks are tracked in `docs/hardware-checklist.md`.
+
 ## [1.0.0-rc.1] - 2026-09-05
 
 Initial public release candidate.

@@ -3,7 +3,7 @@
 [![CI](https://github.com/joeycatic/esp32-spotify-touch-controller/actions/workflows/ci.yml/badge.svg)](https://github.com/joeycatic/esp32-spotify-touch-controller/actions/workflows/ci.yml)
 
 > [!WARNING]
-> `v1.0.0-rc.1` is a release candidate. Native tests and firmware compilation pass, but physical acceptance testing on the Waveshare ESP32-S3-Touch-LCD-2 is pending because the test antenna arrived damaged. Expect hardware-specific issues until the [hardware checklist](docs/hardware-checklist.md) is complete.
+> `v1.0.0-rc.2` is a release candidate. Native tests, firmware compilation, and flashing pass on the Waveshare ESP32-S3-Touch-LCD-2. The remaining interaction and soak checks are tracked in the [hardware checklist](docs/hardware-checklist.md).
 
 A standalone Spotify display and touchscreen remote for the Waveshare ESP32-S3-Touch-LCD-2. After one-time USB setup, the controller connects directly to Wi-Fi and Spotify. No computer, cloud relay, or Raspberry Pi needs to remain running.
 
@@ -11,17 +11,17 @@ The ESP32 controls Spotify playback on another Spotify Connect device. It does n
 
 ## Project Status
 
-The software is feature-complete for the first release candidate. Physical-device validation is still pending; see the [hardware acceptance checklist](docs/hardware-checklist.md) for the exact tests that remain.
+The software is feature-complete for the second release candidate. Physical-device validation is in progress; see the [hardware acceptance checklist](docs/hardware-checklist.md) for the exact tests that remain.
 
 ## Features
 
 - Cover-first 240×320 Now Playing screen with memory-only album artwork
 - Play/pause, previous, next, seek, volume, shuffle, and repeat
 - Spotify Connect output-device picker and playback transfer
-- Playlist and song browsing with 20-item pagination
+- Prefetched playlist and song browsing with cached 20-item pagination
 - Liked Songs browsing and selection
 - Play-only handling for followed playlists whose items Spotify hides
-- Swipe-up library, mini-player, and Open-in-Spotify QR code
+- Swipe-up library, horizontal track swipes, animated controls, mini-player, and Open-in-Spotify QR code
 - One-time browser PKCE authorization over USB serial; no client secret
 - Automatic access-token refresh and rotated refresh-token storage
 - Validated HTTPS, rate-limit handling, offline recovery, and bounded backoff

@@ -42,6 +42,7 @@ private:
   void publishFailure(const SpotifyError &error);
   bool popThumbnail(std::string &key, std::string &url);
   void serviceThumbnails();
+  void prepareForNetworkWork(NetworkWork work);
   void scheduleAfterRequest(bool success, const SpotifyError &error);
 
   ConfigStore &store_;

@@ -4,7 +4,7 @@ Code-level checks can run without a board. The checks below require the physical
 
 ## Bring-up
 
-- [ ] `make flash` detects and uploads to the board.
+- [x] `make flash` detects, uploads to, and verifies the board.
 - [ ] Startup reports a working display and CST816D touch controller.
 - [ ] Startup reports 16 MB flash and 8 MB PSRAM.
 - [ ] The display is portrait, colors are correct, and the backlight is stable.
@@ -50,4 +50,3 @@ Code-level checks can run without a board. The checks below require the physical
 - [ ] Holding BOOT during reset enters provisioning without immediately erasing configuration.
 - [ ] Holding BOOT for ten seconds displays a countdown and erases configuration.
 - [ ] One hour of continuous playback causes no reboot, growing memory use, corrupt artwork, or frozen touch input.
-

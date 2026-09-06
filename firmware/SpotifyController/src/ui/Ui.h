@@ -12,6 +12,7 @@
 #include "../app/NetworkService.h"
 #include "../board/Board.h"
 #include "../core/AppState.h"
+#include "AnimationPolicy.h"
 
 namespace spotctl {
 
@@ -63,6 +64,7 @@ private:
   void showSetup(const char *title, const char *detail);
   void showPlayer();
   void showLibrary(bool request_data);
+  void requestPlaylists();
   void showTracks(const std::string &title);
   void showPlayOnly(const PlaylistSummary &playlist);
   void showDevices();
@@ -83,6 +85,7 @@ private:
   void rebuildDeviceRows();
   void updatePlaybackWidgets();
   void updateMiniPlayer();
+  void animatePlayerSwipe(SwipeDirection direction);
   void showMessage(const std::string &message, bool error = false);
   void destroyMessage();
 
@@ -93,6 +96,7 @@ private:
   std::vector<PlaylistSummary> playlists_;
   std::vector<TrackSummary> tracks_;
   std::vector<PlaybackDevice> devices_;
+  PlaylistLoadState playlist_load_state_;
   bool playlists_have_more_{false};
   bool tracks_have_more_{false};
   bool tracks_are_liked_{false};

@@ -82,6 +82,7 @@ Open Spotify on a phone, computer, television, or Spotify Connect speaker and st
 Controls:
 
 - Swipe up: open playlists and Liked Songs.
+- Swipe left/right on Now Playing: next/previous track.
 - Tap a playlist: browse songs when Spotify permits it.
 - Tap a play-only playlist: start the whole playlist.
 - Tap a song: start at that song.
@@ -136,6 +137,12 @@ Start Spotify on another device first, then open the controller’s device picke
 
 This is an expected Spotify development-mode restriction for some followed non-owned playlists. Owned and collaborative playlists expose their song lists.
 
+### Playlist or Liked Songs does not load
+
+Use `v1.0.0-rc.2` or newer. Earlier builds could leave too little contiguous internal memory for a Spotify TLS handshake after loading row artwork. The current build prefetches and caches the playlist page, gives API traffic priority, and uses symbols instead of network-fetched artwork on list rows. Run `make monitor` to see a TLS error code and heap diagnostics if a request still fails.
+
 ### Artwork is missing
 
 Playback controls remain usable when an image URL is absent, decoding fails, or PSRAM is unavailable. A failed image download is retried on later playback polls; changing tracks also triggers a fresh load.
+
+Artwork is shown on Now Playing. Playlist and song rows intentionally use symbols on the current ESP32-S3 profile to preserve contiguous memory for Spotify API connections.

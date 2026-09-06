@@ -59,6 +59,10 @@ bool commandAccepted(bool service_running, bool wifi_connected,
   return service_running && wifi_connected && !rate_limited;
 }
 
+bool networkWorkNeedsArtworkRelease(NetworkWork work) {
+  return work == NetworkWork::SpotifyApi || work == NetworkWork::PlaybackPoll;
+}
+
 void applyOptimisticPlayback(PlaybackSnapshot &playback,
                              PlaybackMutation mutation) {
   switch (mutation) {

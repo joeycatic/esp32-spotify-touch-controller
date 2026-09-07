@@ -17,7 +17,7 @@ All notable changes to this project are documented here.
 - Provisioning, API diagnostics, and artwork diagnostics now use an injected serial stream.
 - The 7B uses UART1 / USB TO UART as its primary flash, monitor, and provisioning connection.
 - The 7B detector now applies the documented GT911 reset/address-selection sequence before requiring its product ID, and RGB flushes use the ESP-IDF driver for PSRAM cache synchronization.
-- The 7B retains Waveshare's ten-scanline DMA bounce buffers for smooth RGB output and the 96 KB LVGL object heap required by wide-layout screen rebuilds.
+- The 7B retains Waveshare's ten-scanline DMA bounce buffers for smooth RGB output and moves the 96 KB LVGL object heap to PSRAM, preserving internal memory for Spotify TLS without starving RGB scanout.
 - macOS bootstrap now downloads the correct Arduino CLI archive.
 
 ### Validation

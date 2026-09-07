@@ -6,8 +6,14 @@
 #define LV_COLOR_DEPTH 16
 #define LV_COLOR_16_SWAP 0
 #define LV_MEM_CUSTOM 0
-// Wide-screen rebuilds require this headroom; draw/frame buffers live in PSRAM.
+// Keep LVGL's bounded allocator, but put its pool in PSRAM. Reserving this
+// pool in internal DRAM leaves Spotify's TLS client without a sufficiently
+// large contiguous block on the 7B; shrinking the RGB bounce buffers instead
+// starves the 30 MHz panel and causes visible stalls.
 #define LV_MEM_SIZE (96U * 1024U)
+#define LV_MEM_POOL_INCLUDE <esp_heap_caps.h>
+#define LV_MEM_POOL_ALLOC(size) \
+  heap_caps_malloc((size), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
 
 #define LV_TICK_CUSTOM 1
 #define LV_TICK_CUSTOM_INCLUDE "Arduino.h"

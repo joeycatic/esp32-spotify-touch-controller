@@ -17,7 +17,7 @@ Now Playing is polled every two seconds while playing, every five seconds while 
 ## Memory
 
 - LVGL uses two 40-row RGB565 draw buffers. They occupy about 19 KB on compact and 160 KB on 7B. Compact may fall back to internal memory; the 7B requires PSRAM.
-- The 7B RGB peripheral owns a 1,228,800-byte PSRAM framebuffer and Waveshare's two 10-row internal DMA bounce buffers for stable 30 MHz scanout. Firmware submits completed LVGL areas through the RGB driver so PSRAM cache synchronization occurs before scanout. LVGL retains its 96 KB object heap because the native wide layout exceeds a smaller allocation during screen rebuilds.
+- The 7B RGB peripheral owns a 1,228,800-byte PSRAM framebuffer and Waveshare's two 10-row internal DMA bounce buffers for stable 30 MHz scanout. Firmware submits completed LVGL areas through the RGB driver so PSRAM cache synchronization occurs before scanout. LVGL retains a bounded 96 KB object heap in PSRAM because the native wide layout exceeds a smaller allocation during screen rebuilds; keeping that pool out of internal DRAM preserves a contiguous block for TLS.
 - Current artwork is downloaded into PSRAM and decoded into an immutable RGB565 frame. A reference-counted handle crosses the network/UI queue so LVGL can never draw from a frame that the other core has freed or reused.
 - Playback events are coalesced, limiting artwork ownership to the frame displayed by the UI and at most one pending replacement.
 - Player artwork is resampled once into an exact 184×184 compact or 400×400 wide RGB565 frame. Spotify's largest image URL is retained for the wide player.

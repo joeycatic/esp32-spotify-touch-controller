@@ -8,6 +8,5 @@ if [[ ! -x "${PROJECT_ROOT}/.venv/bin/python" ]]; then
   exit 1
 fi
 
-PYTHONPATH="${PROJECT_ROOT}/tools/provision" \
+PYTHONPATH="${PROJECT_ROOT}/tools/provision" PORT="${PORT:-}" \
   "${PROJECT_ROOT}/.venv/bin/python" -m spotify_provision "$@"
-

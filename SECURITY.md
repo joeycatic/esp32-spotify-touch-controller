@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Only the latest tagged release receives security fixes. The current `v1.0.0-rc.1` release is a prerelease and has not completed physical hardware validation.
+Only the latest tagged release receives security fixes. The current `v1.0.0-rc.2` release is a prerelease; unreleased universal-board changes have not completed physical validation.
 
 ## Reporting a vulnerability
 

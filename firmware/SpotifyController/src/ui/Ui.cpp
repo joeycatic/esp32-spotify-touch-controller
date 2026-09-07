@@ -6,12 +6,12 @@
 #include "../core/RuntimePolicy.h"
 #include "AnimationPolicy.h"
 #include "EventBinding.h"
+#include "UiLayout.h"
 
 namespace spotctl {
 
 namespace {
 constexpr uint32_t kDimAfterMs = 10U * 60U * 1000U;
-constexpr lv_coord_t kPlayerArtSize = 184;
 
 const lv_style_transition_dsc_t *buttonTransition(bool pressed) {
   static lv_style_prop_t properties[] = {LV_STYLE_BG_COLOR,
@@ -56,7 +56,8 @@ void Ui::begin(bool provisioning_mode) {
   last_interaction_ms_ = millis();
   provisioning_screen_ = provisioning_mode;
   if (provisioning_mode) {
-    showSetup("Connect USB to set up",
+    showSetup(board_.wide() ? "Connect UART1 to set up"
+                            : "Connect USB to set up",
               "Run make provision after creating your Spotify app.");
   } else {
     showSetup("Starting", "Connecting securely to Spotify...");
@@ -84,6 +85,9 @@ void Ui::clear() {
   connection_badge_ = nullptr;
   calibration_target_ = nullptr;
   calibration_label_ = nullptr;
+  factory_reset_button_ = nullptr;
+  factory_reset_pressed_ = false;
+  factory_reset_started_ms_ = 0;
 }
 
 void Ui::applyBaseStyle() {
@@ -91,7 +95,9 @@ void Ui::applyBaseStyle() {
   lv_obj_set_style_bg_color(screen, lv_color_hex(0x080A0C), 0);
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_set_style_text_color(screen, lv_color_hex(0xF7F7F7), 0);
-  lv_obj_set_style_text_font(screen, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(
+      screen, board_.wide() ? &lv_font_montserrat_18 : &lv_font_montserrat_14,
+      0);
   // Nothing on these screens scrolls as a whole, and a scrollable screen
   // consumes horizontal drags as panning instead of emitting a gesture.
   lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
@@ -113,11 +119,168 @@ void Ui::applyBaseStyle() {
   lv_obj_set_style_pad_hor(connection_badge_, 4, 0);
   lv_obj_set_style_pad_ver(connection_badge_, 2, 0);
   lv_obj_set_style_radius(connection_badge_, 4, 0);
-  lv_obj_align(connection_badge_, LV_ALIGN_TOP_RIGHT, -3, 2);
+  lv_obj_align(connection_badge_, LV_ALIGN_TOP_RIGHT,
+               board_.wide() ? -76 : -3, board_.wide() ? 22 : 2);
   if (!offline_) {
     lv_obj_add_flag(connection_badge_, LV_OBJ_FLAG_HIDDEN);
   }
   lv_obj_move_foreground(connection_badge_);
+}
+
+void Ui::addWideChrome() {
+  if (!board_.wide()) {
+    return;
+  }
+  lv_obj_t *top = lv_obj_create(lv_scr_act());
+  lv_obj_set_pos(top, 0, 0);
+  lv_obj_set_size(top, 1024, 64);
+  lv_obj_set_style_bg_color(top, lv_color_hex(0x0E1115), 0);
+  lv_obj_set_style_border_width(top, 0, 0);
+  lv_obj_set_style_radius(top, 0, 0);
+  lv_obj_set_style_pad_all(top, 0, 0);
+  lv_obj_clear_flag(top, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *brand = lv_label_create(top);
+  lv_label_set_text(brand, "SPOTIFY CONTROLLER");
+  lv_obj_set_style_text_color(brand, lv_color_hex(0x1ED760), 0);
+  lv_obj_set_style_text_font(brand, &lv_font_montserrat_20, 0);
+  lv_obj_align(brand, LV_ALIGN_LEFT_MID, 8, 0);
+  lv_obj_t *settings = makeButton(top, LV_SYMBOL_SETTINGS, 952, 0, 64, 64,
+                                  settingsEvent);
+  lv_obj_set_style_bg_opa(settings, LV_OPA_TRANSP, 0);
+
+  lv_obj_t *nav = lv_obj_create(lv_scr_act());
+  lv_obj_set_pos(nav, 0, 528);
+  lv_obj_set_size(nav, 1024, 72);
+  lv_obj_set_style_bg_color(nav, lv_color_hex(0x0E1115), 0);
+  lv_obj_set_style_border_width(nav, 0, 0);
+  lv_obj_set_style_radius(nav, 0, 0);
+  lv_obj_set_style_pad_all(nav, 0, 0);
+  lv_obj_clear_flag(nav, LV_OBJ_FLAG_SCROLLABLE);
+  struct NavItem {
+    const char *label;
+    lv_event_cb_t callback;
+  };
+  const NavItem items[] = {{"Now Playing", nowPlayingEvent},
+                           {"Library", libraryNavEvent},
+                           {"Devices", deviceEvent},
+                           {"Volume", volumeOpenEvent},
+                           {"QR", qrNavEvent}};
+  for (size_t i = 0; i < 5; ++i) {
+    lv_obj_t *button = makeButton(nav, items[i].label,
+                                  static_cast<lv_coord_t>(i * 202 + 4), 2,
+                                  194, 64, items[i].callback);
+    lv_obj_set_style_radius(button, 12, 0);
+  }
+  if (connection_badge_ != nullptr) {
+    lv_obj_move_foreground(connection_badge_);
+  }
+}
+
+void Ui::showWidePlayer() {
+  clear();
+  applyBaseStyle();
+  screen_ = Screen::Player;
+  addWideChrome();
+
+  status_label_ = lv_label_create(lv_scr_act());
+  lv_label_set_text(status_label_, playback_.device.name.empty()
+                                      ? "No active device"
+                                      : playback_.device.name.c_str());
+  lv_obj_set_style_text_color(status_label_, lv_color_hex(0xA6ABB2), 0);
+  lv_obj_set_pos(status_label_, 690, 22);
+  lv_obj_add_flag(status_label_, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(status_label_, deviceEvent, LV_EVENT_CLICKED, this);
+
+  artwork_placeholder_ = lv_obj_create(lv_scr_act());
+  lv_obj_set_pos(artwork_placeholder_, 40, 84);
+  lv_obj_set_size(artwork_placeholder_, 400, 400);
+  lv_obj_set_style_bg_color(artwork_placeholder_, lv_color_hex(0x15191E), 0);
+  lv_obj_set_style_border_width(artwork_placeholder_, 0, 0);
+  lv_obj_set_style_radius(artwork_placeholder_, 18, 0);
+  lv_obj_t *note = lv_label_create(artwork_placeholder_);
+  lv_label_set_text(note, LV_SYMBOL_AUDIO);
+  lv_obj_set_style_text_color(note, lv_color_hex(0x39414B), 0);
+  lv_obj_set_style_text_font(note, &lv_font_montserrat_24, 0);
+  lv_obj_center(note);
+
+  artwork_image_ = lv_img_create(lv_scr_act());
+  lv_obj_set_pos(artwork_image_, 40, 84);
+  lv_obj_set_size(artwork_image_, 400, 400);
+  lv_img_set_size_mode(artwork_image_, LV_IMG_SIZE_MODE_REAL);
+  lv_img_set_antialias(artwork_image_, true);
+  lv_obj_add_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
+
+  title_label_ = lv_label_create(lv_scr_act());
+  lv_obj_set_pos(title_label_, 500, 105);
+  lv_obj_set_width(title_label_, 470);
+  lv_label_set_long_mode(title_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_style_text_font(title_label_, &lv_font_montserrat_24, 0);
+  subtitle_label_ = lv_label_create(lv_scr_act());
+  lv_obj_set_pos(subtitle_label_, 500, 150);
+  lv_obj_set_width(subtitle_label_, 470);
+  lv_label_set_long_mode(subtitle_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_style_text_color(subtitle_label_, lv_color_hex(0xA6ABB2), 0);
+  lv_obj_set_style_text_font(subtitle_label_, &lv_font_montserrat_18, 0);
+
+  progress_slider_ = lv_slider_create(lv_scr_act());
+  lv_obj_set_pos(progress_slider_, 500, 215);
+  lv_obj_set_size(progress_slider_, 470, 18);
+  lv_obj_set_style_bg_color(progress_slider_, lv_color_hex(0x343940), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(progress_slider_, lv_color_hex(0x1ED760), LV_PART_INDICATOR);
+  lv_obj_add_event_cb(progress_slider_, seekEvent, LV_EVENT_RELEASED, this);
+  elapsed_label_ = lv_label_create(lv_scr_act());
+  lv_obj_set_pos(elapsed_label_, 500, 242);
+  duration_label_ = lv_label_create(lv_scr_act());
+  lv_obj_set_pos(duration_label_, 920, 242);
+  for (lv_obj_t *label : {elapsed_label_, duration_label_}) {
+    lv_obj_set_style_text_color(label, lv_color_hex(0x858B94), 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+  }
+
+  shuffle_button_ = makeButton(lv_scr_act(), LV_SYMBOL_SHUFFLE, 500, 305, 72,
+                               72, shuffleEvent);
+  makeButton(lv_scr_act(), LV_SYMBOL_PREV, 590, 305, 72, 72, previousEvent);
+  lv_obj_t *play = makeButton(lv_scr_act(), LV_SYMBOL_PLAY, 680, 293, 96, 96,
+                              playEvent);
+  play_button_label_ = lv_obj_get_child(play, 0);
+  makeButton(lv_scr_act(), LV_SYMBOL_NEXT, 794, 305, 72, 72, nextEvent);
+  repeat_button_ = makeButton(lv_scr_act(), LV_SYMBOL_LOOP, 884, 305, 72, 72,
+                              repeatEvent);
+  updatePlaybackWidgets();
+}
+
+void Ui::showWideSettings() {
+  clear();
+  applyBaseStyle();
+  screen_ = Screen::Diagnostics;
+  addWideChrome();
+  lv_obj_t *heading = lv_label_create(lv_scr_act());
+  lv_label_set_text(heading, "Diagnostics & setup");
+  lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
+  lv_obj_set_pos(heading, 48, 92);
+  const HardwareStatus &hardware = board_.status();
+  char detail[180];
+  snprintf(detail, sizeof(detail),
+           "%s\nDisplay %s   Touch %s   Flash %u MB   PSRAM %u MB",
+           boardProfileName(hardware.profile), hardware.display_ready ? "OK" : "FAIL",
+           hardware.touch_ready ? "OK" : "FAIL",
+           static_cast<unsigned>(hardware.flash_bytes / (1024U * 1024U)),
+           static_cast<unsigned>(hardware.psram_bytes / (1024U * 1024U)));
+  status_label_ = lv_label_create(lv_scr_act());
+  lv_label_set_text(status_label_, detail);
+  lv_obj_set_pos(status_label_, 48, 145);
+  lv_obj_set_style_text_color(status_label_, lv_color_hex(0xA6ABB2), 0);
+  makeButton(lv_scr_act(), "Touch test", 48, 240, 280, 64, diagnosticsEvent);
+  factory_reset_button_ = lv_btn_create(lv_scr_act());
+  lv_obj_set_pos(factory_reset_button_, 48, 330);
+  lv_obj_set_size(factory_reset_button_, 360, 64);
+  lv_obj_set_style_radius(factory_reset_button_, 32, 0);
+  lv_obj_set_style_bg_color(factory_reset_button_, lv_color_hex(0x7A1D2B), 0);
+  lv_obj_t *reset_label = lv_label_create(factory_reset_button_);
+  lv_label_set_text(reset_label, "Hold 3s: reset setup");
+  lv_obj_center(reset_label);
+  lv_obj_add_event_cb(factory_reset_button_, factoryResetEvent, LV_EVENT_ALL,
+                      this);
 }
 
 lv_obj_t *Ui::makeButton(lv_obj_t *parent, const char *symbol, lv_coord_t x,
@@ -151,22 +314,25 @@ void Ui::showSetup(const char *title, const char *detail) {
   lv_label_set_text(logo, LV_SYMBOL_AUDIO);
   lv_obj_set_style_text_color(logo, lv_color_hex(0x1ED760), 0);
   lv_obj_set_style_text_font(logo, &lv_font_montserrat_24, 0);
-  lv_obj_align(logo, LV_ALIGN_CENTER, 0, -70);
+  lv_obj_align(logo, LV_ALIGN_CENTER, 0, board_.wide() ? -120 : -70);
 
   title_label_ = lv_label_create(lv_scr_act());
   lv_label_set_text(title_label_, title);
-  lv_obj_set_width(title_label_, 216);
+  lv_obj_set_width(title_label_, board_.wide() ? 760 : 216);
   lv_obj_set_style_text_align(title_label_, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(title_label_, &lv_font_montserrat_18, 0);
-  lv_obj_align(title_label_, LV_ALIGN_CENTER, 0, -20);
+  lv_obj_set_style_text_font(title_label_,
+                             board_.wide() ? &lv_font_montserrat_24
+                                           : &lv_font_montserrat_18,
+                             0);
+  lv_obj_align(title_label_, LV_ALIGN_CENTER, 0, board_.wide() ? -55 : -20);
 
   subtitle_label_ = lv_label_create(lv_scr_act());
   lv_label_set_long_mode(subtitle_label_, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(subtitle_label_, 204);
+  lv_obj_set_width(subtitle_label_, board_.wide() ? 760 : 204);
   lv_obj_set_style_text_color(subtitle_label_, lv_color_hex(0xB3B3B3), 0);
   lv_obj_set_style_text_align(subtitle_label_, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(subtitle_label_, detail);
-  lv_obj_align(subtitle_label_, LV_ALIGN_CENTER, 0, 35);
+  lv_obj_align(subtitle_label_, LV_ALIGN_CENTER, 0, board_.wide() ? 10 : 35);
 
   const HardwareStatus &hardware = board_.status();
   char diagnostics[64];
@@ -179,7 +345,7 @@ void Ui::showSetup(const char *title, const char *detail) {
   lv_label_set_text(status_label_, diagnostics);
   lv_obj_set_style_text_color(status_label_, lv_color_hex(0x6F7680), 0);
   lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_align(status_label_, LV_ALIGN_BOTTOM_MID, 0, -20);
+  lv_obj_align(status_label_, LV_ALIGN_BOTTOM_MID, 0, board_.wide() ? -80 : -20);
   lv_obj_add_flag(status_label_, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(status_label_, diagnosticsEvent, LV_EVENT_CLICKED, this);
 }
@@ -229,7 +395,15 @@ void Ui::showFactoryResetComplete() {
   showSetup("Factory reset complete", "Run make provision to configure the controller again.");
 }
 
+void Ui::showSetupSaved() {
+  showSetup("Setup saved", "Restarting...");
+}
+
 void Ui::showPlayer() {
+  if (board_.wide()) {
+    showWidePlayer();
+    return;
+  }
   clear();
   applyBaseStyle();
   screen_ = Screen::Player;
@@ -266,7 +440,7 @@ void Ui::showPlayer() {
 
   artwork_image_ = lv_img_create(lv_scr_act());
   lv_obj_set_pos(artwork_image_, 28, 20);
-  lv_obj_set_size(artwork_image_, kPlayerArtSize, kPlayerArtSize);
+  lv_obj_set_size(artwork_image_, 184, 184);
   // The object size is the size after zoom, so a larger cover scales into
   // this box instead of the box itself being scaled down.
   lv_img_set_size_mode(artwork_image_, LV_IMG_SIZE_MODE_REAL);
@@ -324,14 +498,19 @@ void Ui::showLibrary(bool request_data) {
   clear();
   applyBaseStyle();
   screen_ = Screen::Library;
-  makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  if (board_.wide()) {
+    addWideChrome();
+  } else {
+    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  }
   lv_obj_t *heading = lv_label_create(lv_scr_act());
   lv_label_set_text(heading, "Your Library");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_18, 0);
-  lv_obj_set_pos(heading, 52, 11);
+  lv_obj_set_pos(heading, board_.wide() ? 48 : 52, board_.wide() ? 82 : 11);
   list_ = lv_list_create(lv_scr_act());
-  lv_obj_set_pos(list_, 4, 44);
-  lv_obj_set_size(list_, 232, 222);
+  lv_obj_set_pos(list_, board_.wide() ? 40 : 4, board_.wide() ? 125 : 44);
+  lv_obj_set_size(list_, board_.wide() ? 944 : 232,
+                  board_.wide() ? 387 : 222);
   lv_obj_set_style_bg_color(list_, lv_color_hex(0x080A0C), 0);
   lv_obj_set_style_border_width(list_, 0, 0);
   lv_obj_set_style_pad_all(list_, 2, 0);
@@ -535,31 +714,39 @@ void Ui::rebuildPlaylistRows() {
       label += "  (play only)";
     }
     lv_obj_t *row = lv_list_add_btn(list_, LV_SYMBOL_AUDIO, label.c_str());
-    lv_obj_set_height(row, 52);
+    lv_obj_set_height(row, board_.wide() ? 68 : 52);
     lv_obj_set_user_data(row, reinterpret_cast<void *>(index + 1));
     lv_obj_add_event_cb(row, playlistEvent, LV_EVENT_CLICKED, this);
   }
   lv_obj_scroll_to_y(list_, scroll_y, LV_ANIM_OFF);
   applyStoredThumbnails();
-  // Row-image TLS handshakes fragment the ESP32-S3's internal heap until the
-  // Spotify API can no longer allocate its own TLS session. Keep the symbols
-  // here; full-size player artwork remains enabled.
+  if (board_.capabilities().media.row_thumbnails) {
+    requestVisibleThumbnails();
+  }
 }
 
 void Ui::showTracks(const std::string &title) {
   clear();
   applyBaseStyle();
   screen_ = Screen::Playlist;
-  makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  if (board_.wide()) {
+    addWideChrome();
+    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 40, 76, 64, 64, backEvent);
+  } else {
+    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  }
   lv_obj_t *heading = lv_label_create(lv_scr_act());
-  lv_obj_set_pos(heading, 50, 9);
-  lv_obj_set_width(heading, 180);
+  lv_obj_set_pos(heading, board_.wide() ? 124 : 50,
+                 board_.wide() ? 94 : 9);
+  lv_obj_set_width(heading, board_.wide() ? 820 : 180);
   lv_label_set_long_mode(heading, LV_LABEL_LONG_SCROLL_CIRCULAR);
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_18, 0);
   lv_label_set_text(heading, title.c_str());
   list_ = lv_list_create(lv_scr_act());
-  lv_obj_set_pos(list_, 4, 44);
-  lv_obj_set_size(list_, 232, 222);
+  lv_obj_set_pos(list_, board_.wide() ? 40 : 4,
+                 board_.wide() ? 152 : 44);
+  lv_obj_set_size(list_, board_.wide() ? 944 : 232,
+                  board_.wide() ? 360 : 222);
   lv_obj_set_style_bg_color(list_, lv_color_hex(0x080A0C), 0);
   lv_obj_set_style_border_width(list_, 0, 0);
   lv_obj_add_event_cb(list_, listScrollEvent, LV_EVENT_SCROLL_END, this);
@@ -572,22 +759,31 @@ void Ui::showPlayOnly(const PlaylistSummary &playlist) {
   clear();
   applyBaseStyle();
   screen_ = Screen::Playlist;
-  makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  if (board_.wide()) {
+    addWideChrome();
+    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 40, 76, 64, 64, backEvent);
+  } else {
+    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  }
   title_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_width(title_label_, 210);
+  lv_obj_set_width(title_label_, board_.wide() ? 700 : 210);
   lv_obj_set_style_text_align(title_label_, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(title_label_, &lv_font_montserrat_20, 0);
   lv_label_set_text(title_label_, playlist.name.c_str());
-  lv_obj_align(title_label_, LV_ALIGN_CENTER, 0, -55);
+  lv_obj_align(title_label_, LV_ALIGN_CENTER, 0, board_.wide() ? -90 : -55);
   subtitle_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_width(subtitle_label_, 205);
+  lv_obj_set_width(subtitle_label_, board_.wide() ? 700 : 205);
   lv_label_set_long_mode(subtitle_label_, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(subtitle_label_, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_color(subtitle_label_, lv_color_hex(0xA6ABB2), 0);
   lv_label_set_text(subtitle_label_,
                     "Spotify allows this playlist to be started, but its song list is hidden in development mode.");
   lv_obj_align(subtitle_label_, LV_ALIGN_CENTER, 0, 5);
-  lv_obj_t *play = makeButton(lv_scr_act(), LV_SYMBOL_PLAY, 65, 210, 110, 48,
+  lv_obj_t *play = makeButton(lv_scr_act(), LV_SYMBOL_PLAY,
+                              board_.wide() ? 432 : 65,
+                              board_.wide() ? 350 : 210,
+                              board_.wide() ? 160 : 110,
+                              board_.wide() ? 72 : 48,
                               playPlaylistEvent);
   lv_obj_set_style_bg_color(play, lv_color_hex(0x1ED760), 0);
   updateMiniPlayer();
@@ -610,26 +806,36 @@ void Ui::rebuildTrackRows() {
       label += "  ·  " + clockText(track.duration_ms);
     }
     lv_obj_t *row = lv_list_add_btn(list_, LV_SYMBOL_PLAY, label.c_str());
-    lv_obj_set_height(row, 54);
+    lv_obj_set_height(row, board_.wide() ? 68 : 54);
     lv_obj_set_user_data(row, reinterpret_cast<void *>(index + 1));
     lv_obj_add_event_cb(row, trackEvent, LV_EVENT_CLICKED, this);
   }
   lv_obj_scroll_to_y(list_, scroll_y, LV_ANIM_OFF);
   applyStoredThumbnails();
+  if (board_.capabilities().media.row_thumbnails) {
+    requestVisibleThumbnails();
+  }
 }
 
 void Ui::showDevices() {
   clear();
   applyBaseStyle();
   screen_ = Screen::Devices;
-  makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  if (board_.wide()) {
+    addWideChrome();
+  } else {
+    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  }
   lv_obj_t *heading = lv_label_create(lv_scr_act());
   lv_label_set_text(heading, "Play on");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_18, 0);
-  lv_obj_set_pos(heading, 52, 11);
+  lv_obj_set_pos(heading, board_.wide() ? 48 : 52,
+                 board_.wide() ? 82 : 11);
   list_ = lv_list_create(lv_scr_act());
-  lv_obj_set_pos(list_, 4, 48);
-  lv_obj_set_size(list_, 232, 264);
+  lv_obj_set_pos(list_, board_.wide() ? 40 : 4,
+                 board_.wide() ? 125 : 48);
+  lv_obj_set_size(list_, board_.wide() ? 944 : 232,
+                  board_.wide() ? 387 : 264);
   lv_obj_set_style_bg_color(list_, lv_color_hex(0x080A0C), 0);
   lv_obj_set_style_border_width(list_, 0, 0);
   rebuildDeviceRows();
@@ -637,8 +843,9 @@ void Ui::showDevices() {
 
 void Ui::showVolumeOverlay() {
   lv_obj_t *panel = lv_obj_create(lv_scr_act());
-  lv_obj_set_size(panel, 220, 112);
-  lv_obj_align(panel, LV_ALIGN_CENTER, 0, 45);
+  lv_obj_set_size(panel, board_.wide() ? 560 : 220,
+                  board_.wide() ? 190 : 112);
+  lv_obj_align(panel, LV_ALIGN_CENTER, 0, board_.wide() ? 0 : 45);
   lv_obj_set_style_bg_color(panel, lv_color_hex(0x171A1F), 0);
   lv_obj_set_style_border_color(panel, lv_color_hex(0x31363E), 0);
   lv_obj_set_style_radius(panel, 12, 0);
@@ -650,7 +857,8 @@ void Ui::showVolumeOverlay() {
   lv_obj_set_pos(heading, 6, 3);
 
   lv_obj_t *close = lv_btn_create(panel);
-  lv_obj_set_size(close, 34, 30);
+  lv_obj_set_size(close, board_.wide() ? 64 : 34,
+                  board_.wide() ? 64 : 30);
   lv_obj_align(close, LV_ALIGN_TOP_RIGHT, 7, -7);
   lv_obj_set_style_bg_opa(close, LV_OPA_TRANSP, 0);
   lv_obj_set_style_shadow_width(close, 0, 0);
@@ -660,8 +868,10 @@ void Ui::showVolumeOverlay() {
   lv_obj_center(close_label);
 
   lv_obj_t *slider = lv_slider_create(panel);
-  lv_obj_set_pos(slider, 8, 55);
-  lv_obj_set_size(slider, 176, 16);
+  lv_obj_set_pos(slider, board_.wide() ? 20 : 8,
+                 board_.wide() ? 102 : 55);
+  lv_obj_set_size(slider, board_.wide() ? 480 : 176,
+                  board_.wide() ? 24 : 16);
   lv_slider_set_range(slider, 0, 100);
   lv_slider_set_value(slider, std::max(0, playback_.volume_percent), LV_ANIM_OFF);
   lv_obj_set_style_bg_color(slider, lv_color_hex(0x1ED760), LV_PART_INDICATOR);
@@ -698,20 +908,26 @@ void Ui::showQrCode() {
   clear();
   applyBaseStyle();
   screen_ = Screen::QrCode;
-  makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  if (board_.wide()) {
+    addWideChrome();
+  } else {
+    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  }
   lv_obj_t *heading = lv_label_create(lv_scr_act());
   lv_label_set_text(heading, "Open in Spotify");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_18, 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_MID, 0, 12);
-  lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), 204, lv_color_hex(0x000000),
+  lv_obj_align(heading, LV_ALIGN_TOP_MID, 0, board_.wide() ? 78 : 12);
+  lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), board_.wide() ? 360 : 204,
+                                  lv_color_hex(0x000000),
                                   lv_color_hex(0xFFFFFF));
   lv_qrcode_update(qr, playback_.item.spotify_url.data(),
                    playback_.item.spotify_url.size());
-  lv_obj_align(qr, LV_ALIGN_CENTER, 0, 14);
+  lv_obj_align(qr, LV_ALIGN_CENTER, 0, board_.wide() ? 10 : 14);
   lv_obj_t *caption = lv_label_create(lv_scr_act());
   lv_label_set_text(caption, "Scan with your phone");
   lv_obj_set_style_text_color(caption, lv_color_hex(0xA6ABB2), 0);
-  lv_obj_align(caption, LV_ALIGN_BOTTOM_MID, 0, -10);
+  lv_obj_align(caption, LV_ALIGN_BOTTOM_MID, 0,
+               board_.wide() ? -82 : -10);
 }
 
 void Ui::showTouchCalibration() {
@@ -719,16 +935,22 @@ void Ui::showTouchCalibration() {
   applyBaseStyle();
   screen_ = Screen::Diagnostics;
   calibration_step_ = 0;
-  makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  if (board_.wide()) {
+    addWideChrome();
+    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 40, 72, 64, 64, backEvent);
+  } else {
+    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
+  }
   calibration_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_width(calibration_label_, 170);
+  lv_obj_set_width(calibration_label_, board_.wide() ? 620 : 170);
   lv_obj_set_style_text_align(calibration_label_, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(calibration_label_, "Touch each green corner target");
   lv_obj_align(calibration_label_, LV_ALIGN_CENTER, 0, 0);
   calibration_target_ = lv_btn_create(lv_scr_act());
-  lv_obj_set_size(calibration_target_, 44, 44);
-  lv_obj_set_pos(calibration_target_, 0, 42);
-  lv_obj_set_style_radius(calibration_target_, 22, 0);
+  const lv_coord_t target = board_.wide() ? 64 : 44;
+  lv_obj_set_size(calibration_target_, target, target);
+  lv_obj_set_pos(calibration_target_, 0, board_.wide() ? 64 : 42);
+  lv_obj_set_style_radius(calibration_target_, target / 2, 0);
   lv_obj_set_style_bg_color(calibration_target_, lv_color_hex(0x1ED760), 0);
   lv_obj_add_event_cb(calibration_target_, calibrationEvent, LV_EVENT_CLICKED, this);
 }
@@ -767,9 +989,10 @@ void Ui::updatePlaybackWidgets() {
       if (source_width > 0) {
         // REAL size mode centres the zoomed cover in the box, so the default
         // centre pivot is the correct one here.
-        lv_img_set_zoom(artwork_image_,
-                        static_cast<uint16_t>(kPlayerArtSize * 256 /
-                                              source_width));
+        lv_img_set_zoom(
+            artwork_image_,
+            static_cast<uint16_t>(board_.capabilities().media.player_art_size *
+                                  256 / source_width));
       }
       lv_obj_clear_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
       lv_obj_add_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
@@ -782,6 +1005,9 @@ void Ui::updatePlaybackWidgets() {
 }
 
 void Ui::updateMiniPlayer() {
+  if (board_.wide()) {
+    return;
+  }
   if (screen_ != Screen::Library && screen_ != Screen::Playlist) {
     return;
   }
@@ -834,7 +1060,7 @@ void Ui::animatePlayerSwipe(SwipeDirection direction) {
 void Ui::showMessage(const std::string &message, bool error) {
   destroyMessage();
   message_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_width(message_label_, 220);
+  lv_obj_set_width(message_label_, board_.wide() ? 640 : 220);
   lv_label_set_long_mode(message_label_, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(message_label_, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_bg_opa(message_label_, LV_OPA_90, 0);
@@ -867,7 +1093,9 @@ void Ui::handle(const NetworkEvent &event) {
     break;
   case NetworkEventType::AuthorizationRequired:
     provisioning_screen_ = true;
-    showSetup("Spotify login required", "Reconnect USB and run make provision.");
+    showSetup("Spotify login required",
+              board_.wide() ? "Reconnect UART1 and run make provision."
+                            : "Reconnect USB and run make provision.");
     break;
   case NetworkEventType::Playback:
     {
@@ -970,11 +1198,25 @@ void Ui::tick() {
                         LV_ANIM_OFF);
     lv_label_set_text(elapsed_label_, clockText(progress).c_str());
   }
+  if (factory_reset_pressed_ && !factory_reset_requested_ &&
+      now - factory_reset_started_ms_ >= 3000) {
+    factory_reset_pressed_ = false;
+    factory_reset_requested_ = true;
+    showSetup("Factory reset requested", "Erasing setup and restarting...");
+  }
   const bool should_dim = !playback_.is_playing && now - last_interaction_ms_ > kDimAfterMs;
   if (should_dim != dimmed_) {
     dimmed_ = should_dim;
     board_.setBacklight(dimmed_ ? 20 : 70);
   }
+}
+
+UiAction Ui::pollAction() {
+  if (!factory_reset_requested_) {
+    return UiAction::None;
+  }
+  factory_reset_requested_ = false;
+  return UiAction::FactoryResetRequested;
 }
 
 bool Ui::send(UiCommand command) {
@@ -1141,6 +1383,9 @@ void Ui::listScrollEvent(lv_event_t *event) {
   if (ui->list_ == nullptr) {
     return;
   }
+  if (ui->board_.capabilities().media.row_thumbnails) {
+    ui->requestVisibleThumbnails();
+  }
   if (lv_obj_get_scroll_bottom(ui->list_) > 8) {
     return;
   }
@@ -1181,8 +1426,6 @@ void Ui::diagnosticsEvent(lv_event_t *event) {
 void Ui::calibrationEvent(lv_event_t *event) {
   Ui *ui = self(event);
   ++ui->calibration_step_;
-  static constexpr lv_coord_t positions[4][2] = {
-      {0, 42}, {196, 42}, {196, 276}, {0, 276}};
   if (ui->calibration_step_ >= 4) {
     lv_obj_add_flag(ui->calibration_target_, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(ui->calibration_label_,
@@ -1191,9 +1434,36 @@ void Ui::calibrationEvent(lv_event_t *event) {
                                 0);
     return;
   }
-  lv_obj_set_pos(ui->calibration_target_,
-                 positions[ui->calibration_step_][0],
+  static constexpr lv_coord_t compact_positions[4][2] = {
+      {0, 42}, {196, 42}, {196, 276}, {0, 276}};
+  static constexpr lv_coord_t wide_positions[4][2] = {
+      {0, 64}, {960, 64}, {960, 464}, {0, 464}};
+  const lv_coord_t(*positions)[2] =
+      ui->board_.wide() ? wide_positions : compact_positions;
+  lv_obj_set_pos(ui->calibration_target_, positions[ui->calibration_step_][0],
                  positions[ui->calibration_step_][1]);
+}
+
+void Ui::settingsEvent(lv_event_t *event) { self(event)->showWideSettings(); }
+
+void Ui::nowPlayingEvent(lv_event_t *event) { self(event)->showPlayer(); }
+
+void Ui::libraryNavEvent(lv_event_t *event) {
+  self(event)->showLibrary(true);
+}
+
+void Ui::qrNavEvent(lv_event_t *event) { self(event)->showQrCode(); }
+
+void Ui::factoryResetEvent(lv_event_t *event) {
+  Ui *ui = self(event);
+  const lv_event_code_t code = lv_event_get_code(event);
+  if (code == LV_EVENT_PRESSED) {
+    ui->factory_reset_pressed_ = true;
+    ui->factory_reset_started_ms_ = millis();
+  } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+    ui->factory_reset_pressed_ = false;
+    ui->factory_reset_started_ms_ = 0;
+  }
 }
 
 } // namespace spotctl

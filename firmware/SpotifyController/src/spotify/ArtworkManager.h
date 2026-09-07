@@ -2,6 +2,7 @@
 
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
+#include <Arduino.h>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -13,6 +14,8 @@ namespace spotctl {
 class ArtworkManager {
 public:
   ArtworkManager();
+  void configure(uint16_t player_dimension, uint16_t thumbnail_dimension,
+                 Stream &diagnostic);
 
   // Full-size cover for the player screen.
   ArtworkHandle load(const std::string &url);
@@ -31,6 +34,8 @@ private:
   bool download(const std::string &url, size_t byte_limit, uint8_t *&data,
                 size_t &length);
   ArtworkHandle decode(uint8_t *jpeg, size_t length, uint16_t max_dimension);
+  ArtworkHandle resampleSquare(const ArtworkHandle &source,
+                               uint16_t dimension);
   void dropConnection();
 
   static ArtworkManager *decoding_instance_;
@@ -39,6 +44,9 @@ private:
   HTTPClient http_;
   std::string connected_host_;
   ArtworkFrame *decode_frame_{nullptr};
+  uint16_t player_dimension_{184};
+  uint16_t thumbnail_dimension_{40};
+  Stream *diagnostic_{nullptr};
 };
 
 } // namespace spotctl

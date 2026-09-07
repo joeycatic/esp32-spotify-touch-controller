@@ -1,52 +1,52 @@
 # Hardware Acceptance Checklist
 
-Code-level checks can run without a board. The checks below require the physical Waveshare ESP32-S3-Touch-LCD-2, a Spotify Premium account, Wi-Fi, and at least one Spotify playback device.
+Automated checks use `make test && make build`. Physical checks require Spotify Premium, 2.4 GHz Wi-Fi, and a Spotify Connect playback device. Record observations only on the named board; a previous compact upload is not post-refactor acceptance.
 
-## Bring-up
+## Universal automated checks
 
-- [x] `make flash` detects, uploads to, and verifies the board.
-- [ ] Startup reports a working display and CST816D touch controller.
-- [ ] Startup reports 16 MB flash and 8 MB PSRAM.
-- [ ] The display is portrait, colors are correct, and the backlight is stable.
-- [ ] Tapping the hardware status opens the touch test.
-- [ ] All four corner targets respond in the expected order.
+- [x] Detector policy covers 7B, compact, partial, no-match, and ambiguous evidence.
+- [x] Profile display/media/reset/serial constants and wide layout bounds are tested.
+- [x] Host resolver covers Espressif USB, CH343 preference, pseudo-ports, overrides, and ambiguity.
+- [x] Native C++ and Python provisioning suites pass.
+- [x] One N16R8 firmware image compiles for both profiles.
 
-## Provisioning
+## ESP32-S3-Touch-LCD-7B (SKU 31726)
 
-- [ ] `make provision` opens Spotify authorization.
-- [ ] Wrong OAuth state is rejected.
-- [ ] The ESP32 returns a successful provisioning acknowledgement.
-- [ ] The board restarts and reconnects without the computer providing a service.
-- [ ] A second power cycle proves the configuration persisted.
-- [ ] Serial output contains no Wi-Fi password or Spotify token.
+### Bring-up and provisioning
 
-## Playback
+- [x] UART1 / USB TO UART enumerates through the onboard CH343 and `make flash` selects it.
+- [x] Upload and flash verification complete without manually specifying `PORT`.
+- [x] Cold boot and a remembered-profile reboot both report `Wide7B`.
+- [ ] Display is 1024×600 landscape with correct colors, no drift/flicker/tearing, and stable backlight.
+- [ ] GT911 reports accurately at all four corners and gestures track the expected direction.
+- [ ] Runtime native USB appears after the expander selects USB; UART1 remains usable for logs/provisioning.
+- [x] `make provision` succeeds after flashing, acknowledges storage, and survives a reset.
+- [x] Serial output contains no Wi-Fi password, authorization code, access token, or refresh token.
 
-- [ ] Now Playing appears within ten seconds after Wi-Fi is available.
-- [ ] Artwork is square, correctly colored, and not cropped.
-- [ ] Title, artist or show, progress, duration, device, shuffle, and repeat are accurate.
-- [ ] Play/pause, previous, next, seek, volume, shuffle, and repeat work.
-- [ ] Touch feedback is visible immediately and Spotify reconciles within three seconds.
-- [ ] The QR code opens the correct current Spotify item.
+### UI and Spotify
 
-## Library and Devices
+- [ ] Top status bar, 400×400 artwork, player metadata, progress, and 64-pixel controls fit without clipping.
+- [ ] Persistent Now Playing, Library, Devices, Volume, and QR navigation works.
+- [ ] Play/pause, previous, next, seek, volume, shuffle, repeat, device transfer, and QR link work.
+- [ ] Owned/collaborative playlists, play-only playlists, and Liked Songs behave correctly.
+- [ ] Visible 64×64 row thumbnails load incrementally without blocking controls.
+- [ ] Gear diagnostics and four-corner touch test work.
+- [ ] Holding on-screen Reset setup for three seconds erases credentials; releasing early cancels.
+- [ ] Holding BOOT during reset enters provisioning without continuously reading GPIO0 after RGB starts.
 
-- [ ] Owned playlist songs load and a selected song starts at its playlist position.
-- [ ] Collaborative playlist songs load when one is available.
-- [ ] A followed non-owned playlist displays its play-only explanation and starts.
-- [ ] Liked Songs loads, paginates, and a selected song starts.
-- [ ] The mini-player remains usable while browsing.
-- [ ] Available playback devices load.
-- [ ] Playback transfers between two devices.
-- [ ] A restricted device is not offered as a valid transfer target.
+### Recovery and soak
 
-## Recovery and Soak
+- [ ] Wi-Fi loss/recovery, expired-token refresh, revoked authorization, and `429 Retry-After` recover correctly.
+- [ ] Unknown/touch/display failure paths remain available over sanitized serial recovery.
+- [ ] One-hour playback/library/artwork soak has no reboot, frozen touch, corrupt frame, or unbounded memory loss.
 
-- [ ] Turning Wi-Fi off retains the last display, marks the controller offline, and rejects commands.
-- [ ] Restoring Wi-Fi reconnects without rebooting.
-- [ ] An expired access token refreshes automatically.
-- [ ] Revoked authorization displays the USB reauthorization screen.
-- [ ] A simulated `429` respects `Retry-After`.
-- [ ] Holding BOOT during reset enters provisioning without immediately erasing configuration.
-- [ ] Holding BOOT for ten seconds displays a countdown and erases configuration.
-- [ ] One hour of continuous playback causes no reboot, growing memory use, corrupt artwork, or frozen touch input.
+## ESP32-S3-Touch-LCD-2 regression
+
+- [x] A pre-refactor firmware upload and flash verification passed on this model.
+- [ ] Universal firmware detects `Compact2` on cold and remembered-profile boots.
+- [ ] Portrait orientation, colors, backlight, and CST816 four-corner touch match the baseline.
+- [ ] Native USB flash, monitor, and provisioning work automatically.
+- [ ] Existing Now Playing, swipes, library, mini-player, devices, volume, and QR behavior is unchanged.
+- [ ] Compact rows retain symbols and full player artwork remains stable.
+- [ ] BOOT enters provisioning and a continuous ten-second hold shows the countdown and erases credentials.
+- [ ] One-hour playback/navigation soak passes without reboot, frozen touch, or memory loss.

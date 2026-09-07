@@ -10,7 +10,7 @@ class DeviceProvisioner {
 public:
   explicit DeviceProvisioner(ConfigStore &store) : store_(store) {}
 
-  void begin();
+  void begin(Stream &serial);
   bool poll();
 
 private:
@@ -18,6 +18,7 @@ private:
   void respond(bool ok, const char *code, const char *message);
 
   ConfigStore &store_;
+  Stream *serial_{nullptr};
   String input_;
   bool overflowed_{false};
 };

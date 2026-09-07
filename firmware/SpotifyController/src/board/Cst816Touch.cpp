@@ -1,5 +1,7 @@
 #include "Cst816Touch.h"
 
+#include "TouchTransform.h"
+
 namespace spotctl {
 
 namespace {
@@ -60,24 +62,7 @@ bool Cst816Touch::read(uint16_t &x, uint16_t &y) {
 
 void Cst816Touch::transform(uint16_t raw_x, uint16_t raw_y, uint16_t &x,
                             uint16_t &y) const {
-  switch (rotation_) {
-  case 1:
-    x = raw_y;
-    y = static_cast<uint16_t>(height_ - 1 - raw_x);
-    break;
-  case 2:
-    x = static_cast<uint16_t>(width_ - 1 - raw_x);
-    y = static_cast<uint16_t>(height_ - 1 - raw_y);
-    break;
-  case 3:
-    x = static_cast<uint16_t>(width_ - 1 - raw_y);
-    y = raw_x;
-    break;
-  default:
-    x = raw_x;
-    y = raw_y;
-    break;
-  }
+  transformTouchPoint(raw_x, raw_y, rotation_, width_, height_, x, y);
 }
 
 } // namespace spotctl

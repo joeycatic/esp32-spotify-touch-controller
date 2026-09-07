@@ -19,29 +19,36 @@ bool provisioning_mode = false;
 bool wifi_was_connected = false;
 bool configured_before_setup = false;
 bool factory_reset_complete = false;
+bool display_available = false;
 uint32_t boot_hold_started_ms = 0;
 uint8_t last_reset_countdown = 255;
 
 void setup() {
   Serial.begin(115200);
+  Serial0.begin(115200);
   delay(150);
 
-  if (!board.begin()) {
-    Serial.println("Hardware initialization failed");
-    for (;;) {
-      delay(1000);
-    }
-  }
+  display_available = board.begin();
   configured_before_setup = config_store.load(device_config);
   const bool boot_held = board.bootButtonHeld();
-  provisioning_mode = !configured_before_setup || boot_held;
+  provisioning_mode = !display_available || !configured_before_setup || boot_held;
   if (boot_held && configured_before_setup) {
     boot_hold_started_ms = millis();
   }
 
+  if (!display_available) {
+    const char *recovery =
+        board.profile() == spotctl::BoardProfile::Compact2
+            ? "[recovery] Display unavailable; provisioning is active on native USB"
+            : "[recovery] Hardware unavailable; provisioning is active on UART0";
+    Serial.println(recovery);
+    Serial0.println(recovery);
+    provisioner.begin(board.primarySerial());
+    return;
+  }
   if (provisioning_mode) {
     ui.begin(true);
-    provisioner.begin();
+    provisioner.begin(board.primarySerial());
   } else {
     ui.begin(false);
     ui.showConnecting(device_config.ssid.c_str());
@@ -51,9 +58,19 @@ void setup() {
 
 void loop() {
   board.tick();
-  ui.tick();
+  if (display_available) {
+    ui.tick();
+    if (ui.pollAction() == spotctl::UiAction::FactoryResetRequested) {
+      config_store.erase();
+      delay(300);
+      ESP.restart();
+    }
+  }
   if (provisioning_mode) {
-    if (configured_before_setup && !factory_reset_complete &&
+    if (display_available &&
+        board.capabilities().factory_reset ==
+            spotctl::FactoryResetPolicy::BootHold10Seconds &&
+        configured_before_setup && !factory_reset_complete &&
         boot_hold_started_ms != 0 && board.bootButtonHeld()) {
       const uint32_t held_ms = millis() - boot_hold_started_ms;
       if (held_ms >= 3000 && held_ms < 10000) {
@@ -72,7 +89,9 @@ void loop() {
       boot_hold_started_ms = 0;
     }
     if (provisioner.poll()) {
-      board.showBootMessage("Setup saved", "Restarting...");
+      if (display_available) {
+        ui.showSetupSaved();
+      }
       delay(600);
       ESP.restart();
     }
@@ -80,7 +99,8 @@ void loop() {
     wifi.tick();
     const bool connected = wifi.connected();
     if (connected && !network_service.running()) {
-      network_service.begin(device_config);
+      network_service.begin(device_config, board.capabilities().media,
+                            board.primarySerial());
     }
     if (connected && !wifi_was_connected) {
       ui.showOnline();
@@ -94,7 +114,7 @@ void loop() {
       ui.handle(event);
       if (event.type == spotctl::NetworkEventType::AuthorizationRequired) {
         provisioning_mode = true;
-        provisioner.begin();
+        provisioner.begin(board.primarySerial());
         break;
       }
     }

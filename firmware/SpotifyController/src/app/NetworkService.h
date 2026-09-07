@@ -13,6 +13,7 @@
 #include "../spotify/SpotifyClient.h"
 #include "../storage/ConfigStore.h"
 #include "ControllerMessages.h"
+#include "../board/BoardProfile.h"
 
 namespace spotctl {
 
@@ -20,7 +21,8 @@ class NetworkService {
 public:
   explicit NetworkService(ConfigStore &store);
 
-  bool begin(const DeviceConfig &config);
+  bool begin(const DeviceConfig &config, const MediaPolicy &media,
+             Stream &diagnostic);
   bool enqueue(const UiCommand &command);
   bool pollEvent(NetworkEvent &event);
   bool running() const { return running_; }
@@ -48,6 +50,7 @@ private:
   ConfigStore &store_;
   SpotifyClient spotify_;
   ArtworkManager artwork_;
+  MediaPolicy media_{capabilitiesFor(BoardProfile::Compact2).media};
   DeviceConfig config_;
   SemaphoreHandle_t mutex_{nullptr};
   std::deque<UiCommand> commands_;

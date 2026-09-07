@@ -8,11 +8,14 @@ mkdir -p "${PROJECT_ROOT}/.tools" "${PROJECT_ROOT}/.arduino/data" \
   "${PROJECT_ROOT}/.arduino/downloads" "${PROJECT_ROOT}/.arduino/user"
 
 if [[ ! -x "${ARDUINO_CLI}" ]]; then
+  os="$(uname -s)"
   machine="$(uname -m)"
-  case "${machine}" in
-    x86_64) archive_arch="Linux_64bit" ;;
-    aarch64|arm64) archive_arch="Linux_ARM64" ;;
-    *) echo "Unsupported CPU architecture: ${machine}" >&2; exit 1 ;;
+  case "${os}:${machine}" in
+    Linux:x86_64) archive_arch="Linux_64bit" ;;
+    Linux:aarch64|Linux:arm64) archive_arch="Linux_ARM64" ;;
+    Darwin:x86_64) archive_arch="macOS_64bit" ;;
+    Darwin:arm64) archive_arch="macOS_ARM64" ;;
+    *) echo "Unsupported host: ${os} ${machine}" >&2; exit 1 ;;
   esac
   archive="${PROJECT_ROOT}/.tools/arduino-cli.tar.gz"
   curl --fail --location --silent --show-error \

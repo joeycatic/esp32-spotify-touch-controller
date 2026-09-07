@@ -51,6 +51,23 @@ std::string preferredImage(JsonArrayConst images) {
   return selected;
 }
 
+std::string largestImage(JsonArrayConst images) {
+  std::string selected;
+  int selected_width = -1;
+  for (JsonObjectConst image : images) {
+    const std::string url = text(image["url"]);
+    if (url.empty()) {
+      continue;
+    }
+    const int width = image["width"] | 0;
+    if (selected.empty() || width > selected_width) {
+      selected = url;
+      selected_width = width;
+    }
+  }
+  return selected;
+}
+
 // Row thumbnails render near 40px, so the smallest variant Spotify offers is
 // both sufficient and roughly an order of magnitude cheaper to download.
 std::string smallestImage(JsonArrayConst images) {
@@ -172,11 +189,15 @@ bool parsePlayback(const std::string &json, uint32_t observed_at_ms,
       parsed.item.subtitle = text(item["show"]["name"]);
       parsed.item.artwork_url =
           preferredImage(item["images"].as<JsonArrayConst>());
+      parsed.item.artwork_url_large =
+          largestImage(item["images"].as<JsonArrayConst>());
     } else {
       parsed.item.type = type == "track" ? MediaType::Track : MediaType::Unknown;
       parsed.item.subtitle = joinedArtists(item["artists"].as<JsonArrayConst>());
       parsed.item.artwork_url =
           preferredImage(item["album"]["images"].as<JsonArrayConst>());
+      parsed.item.artwork_url_large =
+          largestImage(item["album"]["images"].as<JsonArrayConst>());
     }
   }
   playback = std::move(parsed);

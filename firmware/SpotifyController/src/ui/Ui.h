@@ -16,6 +16,8 @@
 
 namespace spotctl {
 
+enum class UiAction { None, FactoryResetRequested };
+
 class Ui {
 public:
   Ui(Board &board, NetworkService &network)
@@ -29,6 +31,8 @@ public:
   void showOffline();
   void showFactoryResetCountdown(uint8_t seconds_remaining);
   void showFactoryResetComplete();
+  void showSetupSaved();
+  UiAction pollAction();
 
 private:
   static void previousEvent(lv_event_t *event);
@@ -52,9 +56,17 @@ private:
   static void deviceRowEvent(lv_event_t *event);
   static void diagnosticsEvent(lv_event_t *event);
   static void calibrationEvent(lv_event_t *event);
+  static void settingsEvent(lv_event_t *event);
+  static void nowPlayingEvent(lv_event_t *event);
+  static void libraryNavEvent(lv_event_t *event);
+  static void qrNavEvent(lv_event_t *event);
+  static void factoryResetEvent(lv_event_t *event);
 
   void clear();
   void applyBaseStyle();
+  void addWideChrome();
+  void showWidePlayer();
+  void showWideSettings();
   lv_obj_t *makeButton(lv_obj_t *parent, const char *symbol, lv_coord_t x,
                        lv_coord_t y, lv_coord_t width, lv_coord_t height,
                        lv_event_cb_t callback);
@@ -112,6 +124,9 @@ private:
   bool offline_{false};
   bool provisioning_screen_{false};
   uint8_t calibration_step_{0};
+  bool factory_reset_pressed_{false};
+  bool factory_reset_requested_{false};
+  uint32_t factory_reset_started_ms_{0};
 
   lv_obj_t *title_label_{nullptr};
   lv_obj_t *subtitle_label_{nullptr};
@@ -131,6 +146,7 @@ private:
   lv_obj_t *connection_badge_{nullptr};
   lv_obj_t *calibration_target_{nullptr};
   lv_obj_t *calibration_label_{nullptr};
+  lv_obj_t *factory_reset_button_{nullptr};
 };
 
 } // namespace spotctl

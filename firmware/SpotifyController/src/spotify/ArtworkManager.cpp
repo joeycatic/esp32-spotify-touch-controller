@@ -21,7 +21,6 @@ constexpr size_t kMaximumJpegBytes = 512U * 1024U;
 // A row cover is a few kilobytes; anything larger is not a thumbnail.
 constexpr size_t kMaximumThumbnailBytes = 64U * 1024U;
 constexpr uint16_t kMaximumDimension = 640;
-constexpr uint16_t kThumbnailDimension = 40;
 } // namespace
 
 ArtworkManager *ArtworkManager::decoding_instance_ = nullptr;
@@ -44,6 +43,14 @@ ArtworkManager::ArtworkManager() {
   http_.setTimeout(15000);
   http_.setReuse(true);
   http_.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+}
+
+void ArtworkManager::configure(uint16_t player_dimension,
+                               uint16_t thumbnail_dimension,
+                               Stream &diagnostic) {
+  player_dimension_ = player_dimension;
+  thumbnail_dimension_ = thumbnail_dimension;
+  diagnostic_ = &diagnostic;
 }
 
 void ArtworkManager::releaseConnection() {
@@ -82,10 +89,12 @@ bool ArtworkManager::download(const std::string &url, size_t byte_limit,
   }
   const int status = http_.GET();
   if (status != HTTP_CODE_OK) {
-    Serial.printf("[art] %s -> %d heap=%u largest=%u\n", url.c_str(), status,
-                  static_cast<unsigned>(ESP.getFreeHeap()),
-                  static_cast<unsigned>(heap_caps_get_largest_free_block(
-                      MALLOC_CAP_INTERNAL)));
+    if (diagnostic_ != nullptr) {
+      diagnostic_->printf("[art] %s -> %d heap=%u largest=%u\n", url.c_str(),
+                          status, static_cast<unsigned>(ESP.getFreeHeap()),
+                          static_cast<unsigned>(heap_caps_get_largest_free_block(
+                              MALLOC_CAP_INTERNAL)));
+    }
     dropConnection();
     return false;
   }
@@ -189,6 +198,47 @@ ArtworkHandle ArtworkManager::decode(uint8_t *jpeg, size_t length,
   return frame;
 }
 
+ArtworkHandle ArtworkManager::resampleSquare(const ArtworkHandle &source,
+                                              uint16_t dimension) {
+  if (!source || dimension == 0 ||
+      (source->width == dimension && source->height == dimension)) {
+    return source;
+  }
+  ArtworkHandle output = std::make_shared<ArtworkFrame>();
+  output->pixels = static_cast<uint16_t *>(heap_caps_malloc(
+      static_cast<size_t>(dimension) * dimension * sizeof(uint16_t),
+      MALLOC_CAP_SPIRAM));
+  if (output->pixels == nullptr) {
+    return {};
+  }
+  output->width = dimension;
+  output->height = dimension;
+
+  // Spotify covers are square. Center-crop defensively so unusual podcast
+  // images fill the square without geometric distortion.
+  const uint16_t crop = std::min(source->width, source->height);
+  const uint16_t offset_x = static_cast<uint16_t>((source->width - crop) / 2);
+  const uint16_t offset_y = static_cast<uint16_t>((source->height - crop) / 2);
+  for (uint16_t y = 0; y < dimension; ++y) {
+    const uint16_t source_y = static_cast<uint16_t>(
+        offset_y + static_cast<uint32_t>(y) * crop / dimension);
+    for (uint16_t x = 0; x < dimension; ++x) {
+      const uint16_t source_x = static_cast<uint16_t>(
+          offset_x + static_cast<uint32_t>(x) * crop / dimension);
+      output->pixels[static_cast<size_t>(y) * dimension + x] =
+          source->pixels[static_cast<size_t>(source_y) * source->width + source_x];
+    }
+  }
+  output->image.header.always_zero = 0;
+  output->image.header.cf = LV_IMG_CF_TRUE_COLOR;
+  output->image.header.w = dimension;
+  output->image.header.h = dimension;
+  output->image.data_size =
+      static_cast<uint32_t>(dimension) * dimension * sizeof(uint16_t);
+  output->image.data = reinterpret_cast<const uint8_t *>(output->pixels);
+  return output;
+}
+
 bool ArtworkManager::jpegBlock(int16_t x, int16_t y, uint16_t width,
                                uint16_t height, uint16_t *bitmap) {
   ArtworkManager *manager = decoding_instance_;
@@ -216,19 +266,21 @@ ArtworkHandle ArtworkManager::fetch(const std::string &url,
   if (!download(url, byte_limit, jpeg, length)) {
     return {};
   }
-  ArtworkHandle decoded = decode(jpeg, length, max_dimension);
+  const uint16_t decode_limit =
+      byte_limit == kMaximumThumbnailBytes ? max_dimension : kMaximumDimension;
+  ArtworkHandle decoded = decode(jpeg, length, decode_limit);
   heap_caps_free(jpeg);
-  return decoded;
+  return resampleSquare(decoded, max_dimension);
 }
 
 ArtworkHandle ArtworkManager::load(const std::string &url) {
-  ArtworkHandle frame = fetch(url, kMaximumDimension, kMaximumJpegBytes);
+  ArtworkHandle frame = fetch(url, player_dimension_, kMaximumJpegBytes);
   releaseConnection();
   return frame;
 }
 
 ArtworkHandle ArtworkManager::loadThumbnail(const std::string &url) {
-  return fetch(url, kThumbnailDimension, kMaximumThumbnailBytes);
+  return fetch(url, thumbnail_dimension_, kMaximumThumbnailBytes);
 }
 
 } // namespace spotctl

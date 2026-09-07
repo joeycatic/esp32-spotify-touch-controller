@@ -1,23 +1,21 @@
 #include "Board.h"
 
+#include <Wire.h>
 #include <esp_heap_caps.h>
+
+#include "BoardDetector.h"
+#include "Compact2Backend.h"
+#include "Wide7BBackend.h"
 
 namespace spotctl {
 
 namespace {
-constexpr int kWidth = 240;
-constexpr int kHeight = 320;
-constexpr int kBufferRows = 40;
-constexpr int kPinSclk = 39;
-constexpr int kPinMosi = 38;
-constexpr int kPinMiso = 40;
-constexpr int kPinDc = 42;
-constexpr int kPinCs = 45;
-constexpr int kPinReset = -1;
-constexpr int kPinBacklight = 1;
-constexpr int kPinTouchSda = 48;
-constexpr int kPinTouchScl = 47;
 constexpr int kPinBoot = 0;
+
+void logBoth(const char *message) {
+  Serial.println(message);
+  Serial0.println(message);
+}
 } // namespace
 
 Board *Board::instance_ = nullptr;
@@ -26,29 +24,44 @@ Board::Board() { instance_ = this; }
 
 bool Board::begin() {
   pinMode(kPinBoot, INPUT_PULLUP);
-  bus_ = new Arduino_ESP32SPI(kPinDc, kPinCs, kPinSclk, kPinMosi, kPinMiso);
-  display_ = new Arduino_ST7789(bus_, kPinReset, 0, true, kWidth, kHeight);
-  status_.display_ready = display_ != nullptr && display_->begin();
-  if (!status_.display_ready) {
-    return false;
-  }
-  display_->fillScreen(RGB565_BLACK);
-
-  ledcAttach(kPinBacklight, 5000, 10);
-  setBacklight(70);
-
-  Wire.begin(kPinTouchSda, kPinTouchScl);
-  status_.touch_ready = touch_.begin(Wire, 0, kWidth, kHeight);
+  boot_held_at_start_ = digitalRead(kPinBoot) == LOW;
   status_.flash_bytes = ESP.getFlashChipSize();
   status_.psram_bytes = ESP.getPsramSize();
 
+  BoardDetector detector(Wire);
+  status_.profile = detector.detect();
+  const DetectionEvidence &evidence = detector.evidence();
+  char probe_line[160];
+  snprintf(probe_line, sizeof(probe_line),
+           "[board] probes 7B(GPIO8/9 expander=%s GT911=%s) compact(GPIO48/47 CST816=%s)",
+           evidence.wide_expander ? "ok" : "no",
+           evidence.wide_gt911 ? "ok" : "no",
+           evidence.compact_cst816 ? "ok" : "no");
+  logBoth(probe_line);
+  capabilities_ = capabilitiesFor(status_.profile);
+  logDetection();
+  if (status_.profile == BoardProfile::Compact2) {
+    backend_ = new Compact2Backend();
+  } else if (status_.profile == BoardProfile::Wide7B) {
+    backend_ = new Wide7BBackend();
+  } else {
+    logBoth("[board] No unambiguous supported display was detected");
+    return false;
+  }
+  if (backend_ == nullptr || !backend_->begin()) {
+    logBoth("[board] Display backend initialization failed");
+    return false;
+  }
+  status_.touch_ready = backend_->touchReady();
+
   lv_init();
-  const size_t pixel_count = static_cast<size_t>(kWidth * kBufferRows);
+  const size_t pixel_count = static_cast<size_t>(width()) *
+                             capabilities_.display.draw_buffer_rows;
   buffer_a_ = static_cast<lv_color_t *>(
       heap_caps_malloc(pixel_count * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
   buffer_b_ = static_cast<lv_color_t *>(
       heap_caps_malloc(pixel_count * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
-  if (buffer_a_ == nullptr || buffer_b_ == nullptr) {
+  if ((buffer_a_ == nullptr || buffer_b_ == nullptr) && !wide()) {
     if (buffer_a_ != nullptr) {
       heap_caps_free(buffer_a_);
     }
@@ -59,15 +72,16 @@ bool Board::begin() {
         pixel_count * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     buffer_b_ = static_cast<lv_color_t *>(heap_caps_malloc(
         pixel_count * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    if (buffer_a_ == nullptr || buffer_b_ == nullptr) {
-      return false;
-    }
+  }
+  if (buffer_a_ == nullptr || buffer_b_ == nullptr) {
+    logBoth("[board] LVGL draw-buffer allocation failed");
+    return false;
   }
 
   lv_disp_draw_buf_init(&draw_buffer_, buffer_a_, buffer_b_, pixel_count);
   lv_disp_drv_init(&display_driver_);
-  display_driver_.hor_res = kWidth;
-  display_driver_.ver_res = kHeight;
+  display_driver_.hor_res = width();
+  display_driver_.ver_res = height();
   display_driver_.flush_cb = flushCallback;
   display_driver_.draw_buf = &draw_buffer_;
   lv_disp_drv_register(&display_driver_);
@@ -80,25 +94,56 @@ bool Board::begin() {
   lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x080A0C), 0);
   boot_title_ = lv_label_create(lv_scr_act());
   lv_obj_set_style_text_color(boot_title_, lv_color_hex(0x1ED760), 0);
-  lv_obj_set_style_text_font(boot_title_, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_font(boot_title_,
+                             wide() ? &lv_font_montserrat_24
+                                    : &lv_font_montserrat_20,
+                             0);
   lv_obj_align(boot_title_, LV_ALIGN_CENTER, 0, -18);
   boot_detail_ = lv_label_create(lv_scr_act());
   lv_obj_set_style_text_color(boot_detail_, lv_color_hex(0xB3B3B3), 0);
   lv_obj_set_style_text_align(boot_detail_, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_width(boot_detail_, 216);
+  lv_obj_set_width(boot_detail_, wide() ? 700 : 216);
   lv_obj_align(boot_detail_, LV_ALIGN_CENTER, 0, 18);
-  showBootMessage("Starting", "Checking hardware...");
+  showBootMessage("Starting", "Checking configuration...");
+  status_.display_ready = true;
+  lv_timer_handler();
+  setBacklight(wide() ? 100 : 70);
   return true;
 }
 
-void Board::tick() { lv_timer_handler(); }
-
-void Board::setBacklight(uint8_t percent) {
-  const uint8_t bounded = percent > 100 ? 100 : percent;
-  ledcWrite(kPinBacklight, static_cast<uint32_t>(bounded) * 1023U / 100U);
+void Board::logDetection() const {
+  char line[160];
+  snprintf(line, sizeof(line),
+           "[board] profile=%s flash=%uMB psram=%uMB boot=%s",
+           boardProfileName(status_.profile),
+           static_cast<unsigned>(status_.flash_bytes / (1024U * 1024U)),
+           static_cast<unsigned>(status_.psram_bytes / (1024U * 1024U)),
+           boot_held_at_start_ ? "held" : "released");
+  logBoth(line);
 }
 
-bool Board::bootButtonHeld() const { return digitalRead(kPinBoot) == LOW; }
+Stream &Board::primarySerial() const {
+  return (capabilities_.serial == SerialTransport::Uart0 ||
+          status_.profile == BoardProfile::Unknown)
+             ? static_cast<Stream &>(Serial0)
+             : static_cast<Stream &>(Serial);
+}
+
+void Board::tick() {
+  if (status_.display_ready) {
+    lv_timer_handler();
+  }
+}
+
+void Board::setBacklight(uint8_t percent) {
+  if (backend_ != nullptr) {
+    backend_->setBacklight(percent);
+  }
+}
+
+bool Board::bootButtonHeld() const {
+  return wide() ? boot_held_at_start_ : digitalRead(kPinBoot) == LOW;
+}
 
 void Board::showBootMessage(const char *title, const char *detail) {
   if (boot_title_ == nullptr || boot_detail_ == nullptr) {
@@ -110,20 +155,19 @@ void Board::showBootMessage(const char *title, const char *detail) {
 
 void Board::flushCallback(lv_disp_drv_t *, const lv_area_t *area,
                           lv_color_t *colors) {
-  if (instance_ == nullptr || instance_->display_ == nullptr) {
-    return;
+  if (instance_ != nullptr && instance_->backend_ != nullptr) {
+    instance_->backend_->draw(*area, colors);
   }
-  const int width = area->x2 - area->x1 + 1;
-  const int height = area->y2 - area->y1 + 1;
-  instance_->display_->draw16bitRGBBitmap(
-      area->x1, area->y1, reinterpret_cast<uint16_t *>(colors), width, height);
-  lv_disp_flush_ready(&instance_->display_driver_);
+  if (instance_ != nullptr) {
+    lv_disp_flush_ready(&instance_->display_driver_);
+  }
 }
 
 void Board::touchCallback(lv_indev_drv_t *, lv_indev_data_t *data) {
   uint16_t x = 0;
   uint16_t y = 0;
-  if (instance_ != nullptr && instance_->touch_.read(x, y)) {
+  if (instance_ != nullptr && instance_->backend_ != nullptr &&
+      instance_->backend_->readTouch(x, y)) {
     data->state = LV_INDEV_STATE_PRESSED;
     data->point.x = static_cast<lv_coord_t>(x);
     data->point.y = static_cast<lv_coord_t>(y);

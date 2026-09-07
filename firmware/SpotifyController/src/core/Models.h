@@ -15,6 +15,7 @@ struct MediaItem {
   std::string subtitle;
   uint32_t duration_ms{0};
   std::string artwork_url;
+  std::string artwork_url_large;
   std::string spotify_url;
   MediaType type{MediaType::Unknown};
 };
@@ -82,4 +83,3 @@ struct SpotifyError {
 };
 
 } // namespace spotctl
-

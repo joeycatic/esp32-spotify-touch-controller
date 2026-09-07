@@ -17,6 +17,7 @@ public:
   explicit SpotifyClient(ConfigStore &store);
 
   void begin(const DeviceConfig &config);
+  void setDiagnosticStream(Stream &stream) { diagnostic_ = &stream; }
   bool refreshAccessToken(SpotifyError &error);
   bool loadAccountId(std::string &account_id, SpotifyError &error);
   bool getPlayback(PlaybackSnapshot &playback, SpotifyError &error);
@@ -67,7 +68,7 @@ private:
   std::string access_token_;
   std::string account_id_;
   uint32_t refresh_at_ms_{0};
+  Stream *diagnostic_{nullptr};
 };
 
 } // namespace spotctl
-

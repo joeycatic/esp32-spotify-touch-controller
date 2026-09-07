@@ -10,15 +10,19 @@ namespace {
 constexpr size_t kMaximumMessageBytes = 4096;
 } // namespace
 
-void DeviceProvisioner::begin() {
+void DeviceProvisioner::begin(Stream &serial) {
+  serial_ = &serial;
   input_.reserve(kMaximumMessageBytes);
   input_.clear();
   overflowed_ = false;
 }
 
 bool DeviceProvisioner::poll() {
-  while (Serial.available() > 0) {
-    const char character = static_cast<char>(Serial.read());
+  if (serial_ == nullptr) {
+    return false;
+  }
+  while (serial_->available() > 0) {
+    const char character = static_cast<char>(serial_->read());
     if (character == '\r') {
       continue;
     }
@@ -88,9 +92,12 @@ void DeviceProvisioner::respond(bool ok, const char *code,
   response["ok"] = ok;
   response["code"] = code;
   response["message"] = message;
-  serializeJson(response, Serial);
-  Serial.println();
-  Serial.flush();
+  if (serial_ == nullptr) {
+    return;
+  }
+  serializeJson(response, *serial_);
+  serial_->println();
+  serial_->flush();
 }
 
 } // namespace spotctl

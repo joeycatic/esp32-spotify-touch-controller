@@ -6,12 +6,15 @@
 #include <vector>
 
 #include "core/AppState.h"
+#include "board/BoardProfile.h"
+#include "board/TouchTransform.h"
 #include "core/RuntimePolicy.h"
 #include "provision/ProvisioningValidation.h"
 #include "spotify/SpotifyParser.h"
 #include "spotify/SpotifyRequest.h"
 #include "ui/AnimationPolicy.h"
 #include "ui/EventBinding.h"
+#include "ui/UiLayout.h"
 
 namespace {
 
@@ -41,6 +44,67 @@ using spotctl::ErrorCategory;
 using spotctl::MediaItem;
 using spotctl::PlaybackSnapshot;
 using spotctl::Screen;
+
+void boardProfilesAreConservativeAndImmutable() {
+  EXPECT_EQ(spotctl::selectDetectedProfile({true, true, false}),
+            spotctl::BoardProfile::Wide7B);
+  EXPECT_EQ(spotctl::selectDetectedProfile({false, false, true}),
+            spotctl::BoardProfile::Compact2);
+  EXPECT_EQ(spotctl::selectDetectedProfile({true, false, false}),
+            spotctl::BoardProfile::Unknown);
+  EXPECT_EQ(spotctl::selectDetectedProfile({true, true, true}),
+            spotctl::BoardProfile::Unknown);
+  EXPECT_EQ(spotctl::selectBoardProfile(spotctl::BoardProfile::Wide7B, true,
+                                       {false, false, true}),
+            spotctl::BoardProfile::Wide7B);
+  EXPECT_EQ(spotctl::selectBoardProfile(spotctl::BoardProfile::Wide7B, false,
+                                       {false, false, true}),
+            spotctl::BoardProfile::Compact2);
+
+  const auto wide = spotctl::capabilitiesFor(spotctl::BoardProfile::Wide7B);
+  EXPECT_EQ(wide.display.width, static_cast<uint16_t>(1024));
+  EXPECT_EQ(wide.display.height, static_cast<uint16_t>(600));
+  EXPECT_EQ(wide.media.player_art_size, static_cast<uint16_t>(400));
+  EXPECT_EQ(wide.media.thumbnail_size, static_cast<uint16_t>(64));
+  EXPECT_TRUE(wide.media.row_thumbnails);
+  EXPECT_EQ(wide.serial, spotctl::SerialTransport::Uart0);
+  EXPECT_EQ(spotctl::frameBufferBytes(wide.display),
+            static_cast<size_t>(1228800));
+  EXPECT_EQ(spotctl::drawBufferBytes(wide.display),
+            static_cast<size_t>(163840));
+
+  const auto compact = spotctl::capabilitiesFor(spotctl::BoardProfile::Compact2);
+  EXPECT_EQ(compact.display.width, static_cast<uint16_t>(240));
+  EXPECT_EQ(compact.media.player_art_size, static_cast<uint16_t>(184));
+  EXPECT_FALSE(compact.media.row_thumbnails);
+}
+
+void layoutsStayInsideTheirDisplays() {
+  const auto wide = spotctl::layoutFor(spotctl::BoardProfile::Wide7B);
+  EXPECT_EQ(wide.width, static_cast<uint16_t>(1024));
+  EXPECT_EQ(wide.top_bar_height + wide.bottom_nav_height < wide.height, true);
+  EXPECT_EQ(wide.player_art_size, static_cast<uint16_t>(400));
+  EXPECT_EQ(wide.minimum_touch_target, static_cast<uint16_t>(64));
+
+  const auto compact = spotctl::layoutFor(spotctl::BoardProfile::Compact2);
+  EXPECT_EQ(compact.width, static_cast<uint16_t>(240));
+  EXPECT_EQ(compact.height, static_cast<uint16_t>(320));
+}
+
+void touchCornersRemainInsideBothProfiles() {
+  uint16_t x = 0;
+  uint16_t y = 0;
+  EXPECT_TRUE(spotctl::transformTouchPoint(0, 0, 0, 1024, 600, x, y));
+  EXPECT_EQ(x, static_cast<uint16_t>(0));
+  EXPECT_EQ(y, static_cast<uint16_t>(0));
+  EXPECT_TRUE(spotctl::transformTouchPoint(1023, 599, 0, 1024, 600, x, y));
+  EXPECT_EQ(x, static_cast<uint16_t>(1023));
+  EXPECT_EQ(y, static_cast<uint16_t>(599));
+  EXPECT_TRUE(spotctl::transformTouchPoint(0, 0, 2, 240, 320, x, y));
+  EXPECT_EQ(x, static_cast<uint16_t>(239));
+  EXPECT_EQ(y, static_cast<uint16_t>(319));
+  EXPECT_FALSE(spotctl::transformTouchPoint(1024, 600, 0, 1024, 600, x, y));
+}
 
 void pollIntervalTracksPlaybackState() {
   PlaybackSnapshot active;
@@ -312,6 +376,7 @@ void playbackParserHandlesTracksAndEpisodes() {
   EXPECT_EQ(playback.item.title, std::string("Midnight City"));
   EXPECT_EQ(playback.item.subtitle, std::string("M83"));
   EXPECT_EQ(playback.item.artwork_url, std::string("medium.jpg"));
+  EXPECT_EQ(playback.item.artwork_url_large, std::string("large.jpg"));
   EXPECT_EQ(playback.progress_ms, 42000U);
   EXPECT_EQ(playback.observed_at_ms, 1234U);
   EXPECT_EQ(playback.device.name, std::string("Kitchen"));
@@ -567,6 +632,9 @@ void unexplainedFailuresNameTheStatusTheyGotBack() {
 } // namespace
 
 int main() {
+  boardProfilesAreConservativeAndImmutable();
+  layoutsStayInsideTheirDisplays();
+  touchCornersRemainInsideBothProfiles();
   pollIntervalTracksPlaybackState();
   progressInterpolationClampsToDuration();
   retryBackoffIsBounded();

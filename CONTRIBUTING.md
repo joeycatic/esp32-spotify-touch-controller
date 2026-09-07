@@ -28,7 +28,7 @@ Use the bug report form and include reproducible steps, expected and actual beha
 
 ## Hardware validation
 
-Use `docs/hardware-checklist.md` for physical acceptance testing. Check an item only after observing it on the supported Waveshare ESP32-S3-Touch-LCD-2.
+Use `docs/hardware-checklist.md` for physical acceptance testing. Record results separately for the exact Waveshare ESP32-S3-Touch-LCD-2 or ESP32-S3-Touch-LCD-7B revision tested. Hardware-driver changes require regression results for both profiles before release.
 
 ## Security reports
 

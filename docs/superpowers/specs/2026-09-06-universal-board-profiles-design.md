@@ -1,14 +1,14 @@
 # Universal Board Profiles Design
 
 **Date:** 2026-09-06
-**Status:** Approved for implementation planning
+**Status:** Implemented; physical acceptance pending
 
 ## Summary
 
 The firmware will become one universal ESP32-S3 binary supporting two Waveshare boards:
 
 - ESP32-S3-Touch-LCD-2 with a 240×320 SPI ST7789 display and CST816 touch controller
-- ESP32-S3-Touch-LCD-7B, SKU 31726, with a 1024×600 RGB ST7262 display, GT911 touch controller, and CH422G I/O expander
+- ESP32-S3-Touch-LCD-7B, SKU 31726, with a 1024×600 RGB display, GT911 touch controller, and Waveshare `0x24` I/O expander
 
 The binary will detect the attached board before initializing any display bus, select a board backend for the entire boot session, and choose a native UI layout for that profile. The existing 2-inch experience will remain compact and portrait-oriented. The 7B will use the approved focused-split landscape layout.
 
@@ -44,7 +44,7 @@ Detection runs before LVGL, SPI display, RGB display, backlight, or display-owne
 4. If the 7B probe does not confirm the board, release/reconfigure I²C and probe the 2-inch CST816 on GPIO 48/47.
 5. Save a newly confirmed model and use it for the rest of the boot session.
 
-The 7B probe must verify the GT911 product identity and the expected CH422G control path. The 2-inch probe must verify the CST816 chip ID already used by the current driver. An address acknowledgment alone is not sufficient.
+The 7B probe verifies GT911 product ID `911` and a protocol read from the expected `0x24` control path. The 2-inch probe verifies the CST816 chip ID already used by the current driver. An address acknowledgment alone is not sufficient.
 
 The saved model is an optimization, not an authority. Every boot verifies it before configuring display pins. This permits recovery from stale or corrupted NVS and supports moving a flashed ESP32 module between compatible assemblies.
 
@@ -94,13 +94,13 @@ Refactoring this path must be mechanical. Display timings, orientation, touch tr
 The wide backend provides:
 
 - 1024×600 landscape resolution;
-- ST7262 over the ESP32-S3 RGB LCD peripheral;
+- RGB565 panel over the ESP32-S3 RGB LCD peripheral;
 - GT911 touch on the shared GPIO8/GPIO9 I²C bus;
-- CH422G initialization for touch reset, LCD reset, and backlight control;
+- Waveshare expander initialization for touch reset, LCD reset, power, USB/CAN selection, and backlight control;
 - board-specific RGB timing and pin mapping taken from the official Waveshare 7B example;
 - PSRAM-backed framebuffer and bounded LVGL draw buffers.
 
-Initialization order is significant: shared I²C, CH422G safe output state, GT911 reset/address selection, LCD reset, RGB panel, first black frame, and finally backlight enable. Partial initialization must leave the backlight off where possible.
+Initialization order is significant: shared I²C, explicit expander safe output state, GT911 reset/address selection, LCD reset, RGB panel, first black frame, and finally backlight enable. Partial initialization leaves the backlight off where possible. The implementation uses a board-specific generic driver name because the current Waveshare documentation, schematic, and register protocol do not consistently identify the expander silicon.
 
 The official hardware references are:
 
@@ -110,10 +110,10 @@ The official hardware references are:
 
 ## UI Architecture
 
-The UI keeps one shared controller for state, network events, commands, artwork handles, navigation, and screen lifetime. Geometry and widget construction are separated into two layout implementations:
+The UI keeps one shared controller for state, network events, commands, artwork handles, navigation, and screen lifetime. Geometry comes from immutable profile metrics and widget construction has distinct compact and wide paths:
 
-- `CompactLayout` builds the existing 240×320 screens.
-- `WideLayout` builds native 1024×600 screens.
+- compact builders retain the existing 240×320 screens;
+- wide builders create native 1024×600 screens and shared wide chrome.
 
 This split avoids scattering resolution checks throughout individual widget coordinates. Shared callbacks operate on semantic widget roles rather than assuming where those widgets are positioned.
 
@@ -141,9 +141,9 @@ Artwork decode limits must be derived from the requested target size rather than
 
 ## Startup and Data Flow
 
-The startup flow becomes:
+The implemented startup flow is:
 
-1. Start sanitized USB serial output.
+1. Start sanitized native USB and UART0 serial output.
 2. Detect and select the board profile.
 3. Capture boot-time recovery intent before display-owned GPIOs are configured.
 4. Initialize the selected backend and its LVGL drivers.
@@ -162,11 +162,13 @@ On the 7B, GPIO0 participates in the RGB display bus, so the firmware must not c
 - Factory reset is exposed through an on-screen `Reset setup` action with a deliberate hold-to-confirm interaction.
 - USB provisioning remains available when the display or touch cannot complete normal startup.
 
+The 7B's primary host connection is its UART1 / USB TO UART Type-C connector through CH343. Its regular USB connector shares GPIO19/20 with CAN and is selected for runtime use only after the expander is initialized. The compact board continues to use native USB. A shared host resolver chooses only supported USB metadata and never treats macOS Bluetooth/debug pseudo-ports as controllers.
+
 The reset action erases the same Wi-Fi and Spotify configuration as the current factory reset. The remembered board model may remain because it is not a credential and is verified at every boot; erasing it is also safe because detection will rerun.
 
 ## Memory and Performance
 
-The 7B RGB565 framebuffer requires approximately 1.23 MB. Two 1024×40 RGB565 LVGL draw buffers require approximately 160 KB. A 400×400 RGB565 artwork frame requires approximately 320 KB. These allocations fit within 8 MB PSRAM alongside the bounded JPEG, thumbnail, LVGL, networking, and application allocations.
+The 7B RGB565 framebuffer requires 1,228,800 bytes. Two 1024×40 RGB565 LVGL draw buffers require 163,840 bytes. A 400×400 RGB565 artwork frame requires 320,000 bytes. These allocations fit within 8 MB PSRAM alongside the bounded JPEG, thumbnail, LVGL, networking, and application allocations.
 
 The wide backend must allocate large display memory explicitly from PSRAM and fail clearly if the required framebuffer cannot be allocated. It must not fall back to internal SRAM for the 1024×600 framebuffer. Buffer row count and RGB pixel clock may be tuned during hardware validation without changing the interface.
 
@@ -226,4 +228,4 @@ Implementation will update the README, setup guide, architecture notes, and hard
 
 ## Success Criteria
 
-The work is complete when the same built firmware image boots on both boards, selects the correct backend without user configuration, preserves the tested 2-inch behavior, presents the native focused-split interface on the 7B, passes automated verification, and completes the relevant physical acceptance checklist on both devices.
+Implementation is complete when the same built firmware image compiles with both backends, selects the correct backend without configuration, preserves compact behavior, and presents the focused-split 7B interface. Release acceptance additionally requires completing the per-board physical checklist.

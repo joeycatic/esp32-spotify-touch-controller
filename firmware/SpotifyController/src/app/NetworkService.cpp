@@ -20,11 +20,15 @@ bool due(uint32_t now, uint32_t target) {
 NetworkService::NetworkService(ConfigStore &store)
     : store_(store), spotify_(store) {}
 
-bool NetworkService::begin(const DeviceConfig &config) {
+bool NetworkService::begin(const DeviceConfig &config, const MediaPolicy &media,
+                           Stream &diagnostic) {
   if (running_) {
     return true;
   }
   config_ = config;
+  media_ = media;
+  spotify_.setDiagnosticStream(diagnostic);
+  artwork_.configure(media.player_art_size, media.thumbnail_size, diagnostic);
   mutex_ = xSemaphoreCreateMutex();
   if (mutex_ == nullptr) {
     return false;
@@ -331,7 +335,11 @@ void NetworkService::pollPlayback() {
     if (snapshot.item.artwork_url.empty()) {
       artwork_uri_ = snapshot.item.uri;
     } else {
-      image = artwork_.load(snapshot.item.artwork_url);
+      const std::string &artwork_url =
+          media_.player_art_size > 300 && !snapshot.item.artwork_url_large.empty()
+              ? snapshot.item.artwork_url_large
+              : snapshot.item.artwork_url;
+      image = artwork_.load(artwork_url);
       if (image) {
         artwork_uri_ = snapshot.item.uri;
       }

@@ -76,11 +76,13 @@ SpotifyClient::requestRaw(const char *method, const std::string &url,
     const int tls_code = secure_client_.lastError(tls_error, sizeof(tls_error));
     // Failures carry the heap numbers with them: a TLS handshake that cannot
     // find a large enough block fails exactly like a rejected request.
-    Serial.printf("[api] %s %s -> %d tls=%d %s heap=%u largest=%u\n", method,
-                  url.c_str(), result.status, tls_code, tls_error,
-                  static_cast<unsigned>(ESP.getFreeHeap()),
-                  static_cast<unsigned>(heap_caps_get_largest_free_block(
-                      MALLOC_CAP_INTERNAL)));
+    if (diagnostic_ != nullptr) {
+      diagnostic_->printf("[api] %s %s -> %d tls=%d %s heap=%u largest=%u\n",
+                          method, url.c_str(), result.status, tls_code,
+                          tls_error, static_cast<unsigned>(ESP.getFreeHeap()),
+                          static_cast<unsigned>(heap_caps_get_largest_free_block(
+                              MALLOC_CAP_INTERNAL)));
+    }
   }
   if (result.status > 0) {
     result.body = http.getString().c_str();

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import secrets
 import sys
 import webbrowser
@@ -16,21 +17,14 @@ from .protocol import (
     check_port_access,
     provision_serial,
 )
+from .ports import PortResolutionError, detected_port
 
 
 def detect_port() -> str:
-    from serial.tools import list_ports
-
-    ports = list(list_ports.comports())
-    if not ports:
-        raise ProvisioningError("No USB serial device was found")
-    esp_ports = [port.device for port in ports if port.vid == 0x303A]
-    if len(esp_ports) == 1:
-        return esp_ports[0]
-    if len(ports) == 1:
-        return ports[0].device
-    devices = ", ".join(port.device for port in ports)
-    raise ProvisioningError(f"Multiple serial devices found ({devices}); pass --port")
+    try:
+        return detected_port()
+    except PortResolutionError as error:
+        raise ProvisioningError(str(error)) from error
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,13 +45,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        # Fail before prompting for credentials or starting browser OAuth.
+        port = args.port or os.environ.get("PORT") or detect_port()
+        check_port_access(port)
+
         client_id = (args.client_id or input("Spotify Client ID: ")).strip()
         ssid = args.ssid or input("Wi-Fi SSID: ")
         wifi_password = getpass.getpass("Wi-Fi password (empty for open network): ")
-
-        # Checked before authorization so an unusable port cannot waste the flow.
-        port = args.port or detect_port()
-        check_port_access(port)
 
         verifier = generate_verifier()
         state = secrets.token_urlsafe(32)
@@ -88,4 +82,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

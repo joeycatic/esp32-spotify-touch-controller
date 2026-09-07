@@ -15,20 +15,11 @@ require_cli() {
 }
 
 resolve_port() {
-  if [[ -n "${PORT:-}" ]]; then
-    printf '%s\n' "${PORT}"
-    return
+  local python="${PROJECT_ROOT}/.venv/bin/python"
+  if [[ ! -x "${python}" ]]; then
+    echo "Python environment is missing. Run: make bootstrap" >&2
+    exit 1
   fi
-
-  local candidate
-  for candidate in /dev/ttyACM* /dev/ttyUSB*; do
-    if [[ -e "${candidate}" ]]; then
-      printf '%s\n' "${candidate}"
-      return
-    fi
-  done
-
-  echo "No serial device found. Connect the ESP32 or run PORT=/dev/ttyACM0 make flash" >&2
-  exit 1
+  PYTHONPATH="${PROJECT_ROOT}/tools/provision" PORT="${PORT:-}" \
+    "${python}" -m spotify_provision.ports
 }
-

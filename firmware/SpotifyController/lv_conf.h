@@ -6,6 +6,7 @@
 #define LV_COLOR_DEPTH 16
 #define LV_COLOR_16_SWAP 0
 #define LV_MEM_CUSTOM 0
+// Wide-screen rebuilds require this headroom; draw/frame buffers live in PSRAM.
 #define LV_MEM_SIZE (96U * 1024U)
 
 #define LV_TICK_CUSTOM 1
@@ -34,4 +35,3 @@
 #define LV_USE_QRCODE 1
 
 #endif
-

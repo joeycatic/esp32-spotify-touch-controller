@@ -3,19 +3,20 @@
 [![CI](https://github.com/joeycatic/esp32-spotify-touch-controller/actions/workflows/ci.yml/badge.svg)](https://github.com/joeycatic/esp32-spotify-touch-controller/actions/workflows/ci.yml)
 
 > [!WARNING]
-> `v1.0.0-rc.2` is a release candidate. Native tests, firmware compilation, and flashing pass on the Waveshare ESP32-S3-Touch-LCD-2. The remaining interaction and soak checks are tracked in the [hardware checklist](docs/hardware-checklist.md).
+> `v1.0.0-rc.2` is a release candidate. Automated tests and the universal firmware build pass. Physical 7B and post-refactor 2-inch validation are tracked in the [hardware checklist](docs/hardware-checklist.md).
 
-A standalone Spotify display and touchscreen remote for the Waveshare ESP32-S3-Touch-LCD-2. After one-time USB setup, the controller connects directly to Wi-Fi and Spotify. No computer, cloud relay, or Raspberry Pi needs to remain running.
+A standalone Spotify display and touchscreen remote for the Waveshare ESP32-S3-Touch-LCD-2 and ESP32-S3-Touch-LCD-7B (SKU 31726). One firmware image detects either board before initializing its display. After one-time serial setup, the controller connects directly to Wi-Fi and Spotify. No computer, cloud relay, or Raspberry Pi needs to remain running.
 
 The ESP32 controls Spotify playback on another Spotify Connect device. It does not play audio itself.
 
 ## Project Status
 
-The software is feature-complete for the second release candidate. Physical-device validation is in progress; see the [hardware acceptance checklist](docs/hardware-checklist.md) for the exact tests that remain.
+Universal-board support is implemented. Physical-device validation is in progress; see the [hardware acceptance checklist](docs/hardware-checklist.md) for the exact tests that remain.
 
 ## Features
 
-- Cover-first 240×320 Now Playing screen with memory-only album artwork
+- Native cover-first interfaces for 240×320 portrait and 1024×600 landscape displays
+- Conservative automatic board detection with remembered-profile verification
 - Play/pause, previous, next, seek, volume, shuffle, and repeat
 - Spotify Connect output-device picker and playback transfer
 - Prefetched playlist and song browsing with cached 20-item pagination
@@ -25,11 +26,17 @@ The software is feature-complete for the second release candidate. Physical-devi
 - One-time browser PKCE authorization over USB serial; no client secret
 - Automatic access-token refresh and rotated refresh-token storage
 - Validated HTTPS, rate-limit handling, offline recovery, and bounded backoff
-- Four-corner touch diagnostic and physical factory-reset recovery
+- Four-corner touch diagnostics and board-appropriate factory-reset recovery
 
 ## Quick Start
 
 Requirements: Linux, macOS, or WSL with Python 3, `curl`, `tar`, `git`, `g++`, and a USB-C data cable.
+
+Connector choice matters:
+
+- **7B:** connect the port labeled **UART1 / USB TO UART** and route its DIP switch to the ESP32.
+- **2-inch:** connect the regular USB data port.
+- The 7B regular USB port is shared with CAN and may not enumerate before firmware starts.
 
 ```bash
 make bootstrap
@@ -48,7 +55,7 @@ http://127.0.0.1:8765/callback
 make provision
 ```
 
-The setup utility asks for the Spotify Client ID, Wi-Fi network, and Wi-Fi password locally. It opens Spotify authorization in the browser, sends only the resulting refresh token and configuration over USB, and waits for the ESP32 to confirm storage.
+The setup utility asks for the Spotify Client ID, Wi-Fi network, and Wi-Fi password locally. It opens Spotify authorization in the browser, sends only the resulting refresh token and configuration over the selected serial connection, and waits for the ESP32 to confirm storage.
 
 Detailed instructions are in [docs/setup.md](docs/setup.md). Architecture and security decisions are documented in [docs/architecture.md](docs/architecture.md), and the physical-device test procedure is in [docs/hardware-checklist.md](docs/hardware-checklist.md).
 
@@ -59,10 +66,10 @@ make bootstrap                         # Install pinned tools under this reposit
 make test                              # Native C++ and Python tests
 make build                             # Compile the ESP32 firmware
 make flash                             # Build and upload to the detected board
-PORT=/dev/ttyACM0 make flash           # Upload using an explicit serial port
+PORT=/dev/cu.usbserial-DEVICE make flash # Upload using an explicit serial port
 make monitor                           # Sanitized 115200-baud serial monitor
 make provision                         # Interactive one-time setup
-./scripts/provision.sh --port /dev/ttyACM0
+PORT=/dev/cu.usbserial-DEVICE make provision
 ```
 
 ## Important Limits

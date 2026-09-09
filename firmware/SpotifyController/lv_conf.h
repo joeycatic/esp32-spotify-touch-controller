@@ -9,7 +9,7 @@
 // Keep LVGL's bounded allocator, but put its pool in PSRAM. Reserving this
 // pool in internal DRAM leaves Spotify's TLS client without a sufficiently
 // large contiguous block on the 7B; shrinking the RGB bounce buffers instead
-// starves the 30 MHz panel and causes visible stalls.
+// shortens the RGB refill deadline and can cause visible stalls.
 #define LV_MEM_SIZE (96U * 1024U)
 #define LV_MEM_POOL_INCLUDE <esp_heap_caps.h>
 #define LV_MEM_POOL_ALLOC(size) \

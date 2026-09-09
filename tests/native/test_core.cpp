@@ -70,8 +70,13 @@ void boardProfilesAreConservativeAndImmutable() {
   EXPECT_EQ(wide.serial, spotctl::SerialTransport::Uart0);
   EXPECT_EQ(spotctl::frameBufferBytes(wide.display),
             static_cast<size_t>(1228800));
+  // The RGB board renders single-buffered into internal RAM: 1024 x 16 rows is
+  // 32 KiB, which fits alongside the panel's bounce buffers. Two 80 KiB buffers
+  // did not, so they silently fell back to PSRAM and halved flush throughput.
+  EXPECT_EQ(wide.display.draw_buffer_rows, static_cast<uint16_t>(16));
+  EXPECT_EQ(wide.display.draw_buffer_count, static_cast<uint8_t>(1));
   EXPECT_EQ(spotctl::drawBufferBytes(wide.display),
-            static_cast<size_t>(163840));
+            static_cast<size_t>(32768));
 
   const auto compact = spotctl::capabilitiesFor(spotctl::BoardProfile::Compact2);
   EXPECT_EQ(compact.display.width, static_cast<uint16_t>(240));

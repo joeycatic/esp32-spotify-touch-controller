@@ -39,6 +39,7 @@ private:
   static void flushCallback(lv_disp_drv_t *driver, const lv_area_t *area,
                             lv_color_t *colors);
   static void touchCallback(lv_indev_drv_t *driver, lv_indev_data_t *data);
+  lv_color_t *allocateDrawBuffer(size_t bytes);
   void logDetection() const;
 
   static Board *instance_;
@@ -54,6 +55,7 @@ private:
   lv_obj_t *boot_detail_{nullptr};
   HardwareStatus status_;
   bool boot_held_at_start_{false};
+  bool draw_buffers_internal_{true};
 };
 
 } // namespace spotctl

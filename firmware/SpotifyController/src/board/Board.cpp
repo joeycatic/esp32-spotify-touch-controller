@@ -55,35 +55,48 @@ bool Board::begin() {
   status_.touch_ready = backend_->touchReady();
 
   lv_init();
-  const size_t pixel_count = static_cast<size_t>(width()) *
-                             capabilities_.display.draw_buffer_rows;
-  buffer_a_ = static_cast<lv_color_t *>(
-      heap_caps_malloc(pixel_count * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
-  buffer_b_ = static_cast<lv_color_t *>(
-      heap_caps_malloc(pixel_count * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
-  if ((buffer_a_ == nullptr || buffer_b_ == nullptr) && !wide()) {
-    if (buffer_a_ != nullptr) {
-      heap_caps_free(buffer_a_);
+  // Optional capability, currently claimed by no backend: a panel that exposes
+  // two framebuffers can let LVGL render whole frames into the off-screen one
+  // and swap at a frame boundary. The 7B deliberately does not -- see the note
+  // on Wide7BBackend::draw for why that costs more PSRAM bandwidth than it
+  // saves. Keep this branch honest: if it is still dead, it renders nothing.
+  void *panel_first = nullptr;
+  void *panel_second = nullptr;
+  const bool render_into_panel =
+      backend_->framebuffers(panel_first, panel_second);
+  if (render_into_panel) {
+    lv_disp_draw_buf_init(&draw_buffer_, panel_first, panel_second,
+                          static_cast<size_t>(width()) * height());
+    logBoth("[board] LVGL renders into panel framebuffers, swapped at VSYNC");
+  } else {
+    const size_t pixel_count = static_cast<size_t>(width()) *
+                               capabilities_.display.draw_buffer_rows;
+    const size_t buffer_bytes = pixel_count * sizeof(lv_color_t);
+    const bool second_buffer = capabilities_.display.draw_buffer_count > 1;
+    buffer_a_ = allocateDrawBuffer(buffer_bytes);
+    buffer_b_ = second_buffer ? allocateDrawBuffer(buffer_bytes) : nullptr;
+    if (buffer_a_ == nullptr || (second_buffer && buffer_b_ == nullptr)) {
+      logBoth("[board] LVGL draw-buffer allocation failed");
+      return false;
     }
-    if (buffer_b_ != nullptr) {
-      heap_caps_free(buffer_b_);
-    }
-    buffer_a_ = static_cast<lv_color_t *>(heap_caps_malloc(
-        pixel_count * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    buffer_b_ = static_cast<lv_color_t *>(heap_caps_malloc(
-        pixel_count * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    char buffer_line[160];
+    snprintf(buffer_line, sizeof(buffer_line),
+             "[board] LVGL draw buffer: %u x %u rows, %u buffer(s), %s",
+             static_cast<unsigned>(width()),
+             static_cast<unsigned>(capabilities_.display.draw_buffer_rows),
+             static_cast<unsigned>(capabilities_.display.draw_buffer_count),
+             draw_buffers_internal_ ? "internal RAM" : "PSRAM (degraded)");
+    logBoth(buffer_line);
+    lv_disp_draw_buf_init(&draw_buffer_, buffer_a_, buffer_b_, pixel_count);
   }
-  if (buffer_a_ == nullptr || buffer_b_ == nullptr) {
-    logBoth("[board] LVGL draw-buffer allocation failed");
-    return false;
-  }
-
-  lv_disp_draw_buf_init(&draw_buffer_, buffer_a_, buffer_b_, pixel_count);
   lv_disp_drv_init(&display_driver_);
   display_driver_.hor_res = width();
   display_driver_.ver_res = height();
   display_driver_.flush_cb = flushCallback;
   display_driver_.draw_buf = &draw_buffer_;
+  // Full frames only: a partial redraw into an off-screen buffer would leave
+  // the rest of that buffer showing the frame before last.
+  display_driver_.full_refresh = render_into_panel ? 1 : 0;
   lv_disp_drv_register(&display_driver_);
 
   lv_indev_drv_init(&input_driver_);
@@ -111,6 +124,24 @@ bool Board::begin() {
   return true;
 }
 
+// Keep LVGL's render target out of PSRAM. The panel's bounce-buffer ISR must
+// copy the framebuffer out of PSRAM against a fixed per-scanline deadline while
+// the refresh itself already consumes about 40 MB/s of the bus. Rendering into
+// PSRAM makes the flush a PSRAM-to-PSRAM copy, which costs two bytes of bus
+// traffic per byte moved; measured on hardware that halves flush throughput
+// from 15 MB/s to 7.5 MB/s and starves the refill ISR into tearing.
+// Internal RAM is therefore tried first. PSRAM stays as a fallback so a tight
+// internal heap degrades rather than leaving the board without a display, and
+// the boot log says which one was used.
+lv_color_t *Board::allocateDrawBuffer(size_t bytes) {
+  void *buffer = heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (buffer == nullptr) {
+    buffer = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM);
+    draw_buffers_internal_ = false;
+  }
+  return static_cast<lv_color_t *>(buffer);
+}
+
 void Board::logDetection() const {
   char line[160];
   snprintf(line, sizeof(line),
@@ -132,6 +163,9 @@ Stream &Board::primarySerial() const {
 void Board::tick() {
   if (status_.display_ready) {
     lv_timer_handler();
+  }
+  if (backend_ != nullptr) {
+    backend_->poll();
   }
 }
 

@@ -14,6 +14,11 @@ struct DisplayMetrics {
   uint16_t width;
   uint16_t height;
   uint16_t draw_buffer_rows;
+  // A second draw buffer buys nothing while the backend flush is a synchronous
+  // copy: LVGL cannot render ahead of a blocking flush. The RGB board renders
+  // single-buffered so its one buffer fits in internal RAM, which is what keeps
+  // the flush off the PSRAM bus the panel's refill ISR is already saturating.
+  uint8_t draw_buffer_count;
 };
 
 struct MediaPolicy {
@@ -35,20 +40,20 @@ constexpr BoardCapabilities capabilitiesFor(BoardProfile profile) {
   return profile == BoardProfile::Wide7B
              ? BoardCapabilities{BoardProfile::Wide7B,
                                  "Waveshare ESP32-S3-Touch-LCD-7B",
-                                 {1024, 600, 40},
+                                 {1024, 600, 16, 1},
                                  {400, 64, true},
                                  FactoryResetPolicy::OnScreenHold3Seconds,
                                  SerialTransport::Uart0}
          : profile == BoardProfile::Compact2
              ? BoardCapabilities{BoardProfile::Compact2,
                                  "Waveshare ESP32-S3-Touch-LCD-2",
-                                 {240, 320, 40},
+                                 {240, 320, 40, 2},
                                  {184, 40, false},
                                  FactoryResetPolicy::BootHold10Seconds,
                                  SerialTransport::NativeUsb}
              : BoardCapabilities{BoardProfile::Unknown,
                                  "Unknown ESP32-S3 board",
-                                 {0, 0, 0},
+                                 {0, 0, 0, 1},
                                  {0, 0, false},
                                  FactoryResetPolicy::BootHold10Seconds,
                                  SerialTransport::NativeUsb};
@@ -86,7 +91,7 @@ constexpr size_t frameBufferBytes(const DisplayMetrics &display) {
 
 constexpr size_t drawBufferBytes(const DisplayMetrics &display) {
   return static_cast<size_t>(display.width) * display.draw_buffer_rows *
-         sizeof(uint16_t) * 2U;
+         sizeof(uint16_t) * display.draw_buffer_count;
 }
 
 } // namespace spotctl

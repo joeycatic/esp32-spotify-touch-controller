@@ -119,6 +119,7 @@ private:
   // pixels, so an entry is only released after its row stops showing it.
   std::deque<std::pair<std::string, ArtworkHandle>> row_art_;
   uint32_t last_interaction_ms_{0};
+  uint32_t displayed_progress_seconds_{UINT32_MAX};
   uint32_t message_until_ms_{0};
   bool dimmed_{false};
   bool offline_{false};

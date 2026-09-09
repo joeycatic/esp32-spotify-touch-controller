@@ -74,6 +74,7 @@ void Ui::clear() {
   artwork_placeholder_ = nullptr;
   progress_slider_ = nullptr;
   elapsed_label_ = nullptr;
+  displayed_progress_seconds_ = UINT32_MAX;
   duration_label_ = nullptr;
   play_button_label_ = nullptr;
   shuffle_button_ = nullptr;
@@ -1193,10 +1194,20 @@ void Ui::tick() {
   }
   if (screen_ == Screen::Player && playback_.has_item &&
       progress_slider_ != nullptr) {
+    // Ui::tick runs every loop pass, but the elapsed time only changes once a
+    // second. lv_label_set_text reallocates and invalidates unconditionally,
+    // so rewriting the identical string kept the label redrawing and reflushing
+    // continuously for no visible change.
     const uint32_t progress = interpolatedProgressMs(playback_, now);
-    lv_slider_set_value(progress_slider_, static_cast<int32_t>(progress / 1000U),
-                        LV_ANIM_OFF);
-    lv_label_set_text(elapsed_label_, clockText(progress).c_str());
+    const uint32_t seconds = progress / 1000U;
+    if (seconds != displayed_progress_seconds_) {
+      displayed_progress_seconds_ = seconds;
+      lv_slider_set_value(progress_slider_, static_cast<int32_t>(seconds),
+                          LV_ANIM_OFF);
+      if (elapsed_label_ != nullptr) {
+        lv_label_set_text(elapsed_label_, clockText(progress).c_str());
+      }
+    }
   }
   if (factory_reset_pressed_ && !factory_reset_requested_ &&
       now - factory_reset_started_ms_ >= 3000) {

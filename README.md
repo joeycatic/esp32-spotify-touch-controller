@@ -3,7 +3,7 @@
 [![CI](https://github.com/joeycatic/esp32-spotify-touch-controller/actions/workflows/ci.yml/badge.svg)](https://github.com/joeycatic/esp32-spotify-touch-controller/actions/workflows/ci.yml)
 
 > [!WARNING]
-> `v1.0.0-rc.2` is a release candidate. Automated tests and the universal firmware build pass. Physical 7B and post-refactor 2-inch validation are tracked in the [hardware checklist](docs/hardware-checklist.md).
+> `v1.0.0-rc.3` is a release candidate. Automated tests and the universal firmware build pass. Physical 7B and post-refactor 2-inch validation are tracked in the [hardware checklist](docs/hardware-checklist.md).
 
 A standalone Spotify display and touchscreen remote for the Waveshare ESP32-S3-Touch-LCD-2 and ESP32-S3-Touch-LCD-7B (SKU 31726). One firmware image detects either board before initializing its display. After one-time serial setup, the controller connects directly to Wi-Fi and Spotify. No computer, cloud relay, or Raspberry Pi needs to remain running.
 
@@ -12,6 +12,8 @@ The ESP32 controls Spotify playback on another Spotify Connect device. It does n
 ## Project Status
 
 Universal-board support is implemented. Physical-device validation is in progress; see the [hardware acceptance checklist](docs/hardware-checklist.md) for the exact tests that remain.
+
+The 7B needs the separate [source-built ESP-IDF target](firmware/idf/README.md) for a stable display. Arduino CLI's precompiled SDK fixes the PSRAM clock and cache geometry that the RGB panel's DMA depends on, and no sketch-level change reaches them. On hardware this raised idle LVGL flush throughput from 14 MB/s to 54 MB/s and cut time spent in flush per five-second window from 83 ms to 22 ms. Flicker under Spotify load is not yet verified; see the [hardware checklist](docs/hardware-checklist.md).
 
 ## Features
 

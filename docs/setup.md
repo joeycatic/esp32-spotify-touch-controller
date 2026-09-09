@@ -19,6 +19,28 @@ make test
 make build
 ```
 
+### ESP32-S3-Touch-LCD-7B: use the source-built target
+
+`make build` uses Arduino CLI's precompiled SDK, which fixes the PSRAM clock and
+cache geometry at 80 MHz and 32 KB. The 7B's RGB panel streams its framebuffer
+out of PSRAM inside a DMA refill interrupt, so those settings decide whether the
+picture is stable, and no sketch-level change reaches them. Build and flash the
+7B with the source-built ESP-IDF target instead, which rebuilds the framework
+with Waveshare's memory profile:
+
+```powershell
+./scripts/build-idf.ps1
+./scripts/flash-idf.ps1 -Port COM4
+```
+
+Full setup and prerequisites are in [firmware/idf/README.md](../firmware/idf/README.md).
+The 2-inch board is unaffected and uses `make build` normally.
+
+After flashing a 7B, **disconnect all power for ten seconds** before judging the
+display. This board shows a black screen after a warm reset often enough that
+Waveshare's own FAQ answers it with "disconnect and reconnect power"; a single
+post-flash boot is not evidence.
+
 ## 2. Flash the Board
 
 Connect the board with a USB-C data cable:

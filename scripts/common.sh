@@ -15,7 +15,11 @@ require_cli() {
 }
 
 resolve_port() {
+  # Virtual environments use bin/ on POSIX and Scripts/ on Windows.
   local python="${PROJECT_ROOT}/.venv/bin/python"
+  if [[ ! -x "${python}" ]]; then
+    python="${PROJECT_ROOT}/.venv/Scripts/python.exe"
+  fi
   if [[ ! -x "${python}" ]]; then
     echo "Python environment is missing. Run: make bootstrap" >&2
     exit 1

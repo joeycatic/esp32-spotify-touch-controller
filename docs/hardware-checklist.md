@@ -273,6 +273,113 @@ Still unmeasured: behaviour under load. The flicker was always reported while
 Spotify was doing work. Repeat the flush comparison with playback running,
 artwork loading, and Library scrolling before treating the tearing as resolved.
 
+2026-09-09, two-framebuffer attempt: **failed, reverted.** Recorded so it is not
+retried on the same reasoning.
+
+The residual artifact is a narrow distorted band at the left edge, intermittent,
+under load. That is the signature of a FIFO underrun: the peripheral clocks a
+line out late, and the seam lands at the start of the line. It is the original
+whole-picture shift, much reduced.
+
+Waveshare's `published-rgb_lcd_port.c` was compared against ours directly. Every
+porch, the sync polarity, the bounce-buffer size and the GPIO map match exactly.
+`dma_burst_size` is a non-difference: the driver substitutes 64 when the field is
+zero, which is what we set. Two real deltas remained: `pclk_hz` 30.85 MHz vs our
+30, and `num_fbs` 2 vs our 1.
+
+Both were changed at once, which isolated nothing and wasted a flash cycle. The
+result was a black screen. Reverting only the pixel clock to 30 MHz, leaving
+`num_fbs = 2`, was still black. Reverted to `num_fbs = 1` at 30 MHz.
+
+**Correction, same day: that conclusion does not hold.** It was recorded as
+"`num_fbs = 2` blacks this panel". Both of those trials ran inside a window in
+which the *reverted* `num_fbs = 1` firmware also went from a working picture to
+a washed-out panel to no picture at all, on byte-identical source. Whatever was
+making the display intermittent during that window is unexplained, and it means
+neither black screen can be attributed to `num_fbs = 2`. Treat two framebuffers
+as untested, not as ruled out. Waveshare's flawless demo uses `num_fbs = 2`.
+
+What makes this worth recording is that every diagnostic reported success:
+
+```
+[7B] RGB timing: 30 MHz pixel clock, 10-line bounce buffers, 2 framebuffers
+[7B] both framebuffers cleared; panel ready
+[board] LVGL renders into the panel framebuffers, swapped at the frame boundary
+[7B] first LVGL framebuffer flush complete
+[7B] backlight on
+```
+
+No allocation failure, no fallback, no crash, no reset. Flush time fell to 0 ms
+for a full 1200 KB area, which confirms `esp_lcd_panel_draw_bitmap` took its
+no-copy path and recorded `cur_fb_index` as intended. The swap was submitted and
+the panel still showed nothing. Why the frame-boundary latch does not reach the
+glass on this board is unexplained; the ESP-IDF mechanism
+(`lcd_rgb_panel_fill_bounce_buffer` moving `bb_fb_index` to `cur_fb_index` on
+wrap) reads as though it should work, and on this hardware it does not.
+
+Do not retry this on the argument that Waveshare's demo does it. That inference
+failed twice today: first with
+`CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR`, which boot-looped the
+board because the feature is gated on flash vendor ID, and then here. The vendor
+demo runs a different SDK configuration with no Wi-Fi and no TLS. "The vendor
+does X" is evidence, not proof.
+
+If the left-edge band is attacked again, the untried lever is *lowering* the
+pixel clock, which lengthens the per-line refill deadline. That is the opposite
+direction from the vendor-parity change tried here, and it must be the only
+variable in its test.
+
+2026-09-09 hardware cleared, cause isolated. Waveshare's unmodified
+`13_lvgl_transplant.bin` was flashed and reported flawless. The panel, its
+ribbon and the board are therefore all sound, and every black screen recorded
+above was software or transient -- not damage. The full flash was restored from
+the verified backup afterwards.
+
+With the application firmware back, the reported symptom is horizontal
+flickering stripes and general glitching **that appears once Spotify is in
+use**. This is the cleanest comparison available and it isolates the cause:
+
+| | Wi-Fi | TLS | JPEG decode | Result |
+| --- | --- | --- | --- | --- |
+| Waveshare demo | no | no | no | flawless |
+| This firmware | yes | yes | yes | stripes under load |
+
+Panel timings, bounce-buffer size, GPIO map and the memory profile are otherwise
+equivalent. Horizontal stripes are the bounce-buffer refill ISR missing its
+deadline and the panel scanning out stale lines. The defect is contention for
+PSRAM between the panel's continuous read stream and the application's network
+and decode work -- not panel configuration.
+
+The panel demands a *continuous* PSRAM read stream, and the pixel clock sets it:
+
+| pclk | refresh | PSRAM reads | 10-line deadline |
+| --- | --- | --- | --- |
+| 30 MHz | 32.7 Hz | 40.2 MB/s | 462 us |
+| 25 MHz | 27.3 Hz | 33.5 MB/s | 554 us |
+| 22 MHz | 24.0 Hz | 29.5 MB/s | 630 us |
+
+Lowering it would reduce demand and lengthen the deadline at the same time, at a
+refresh rate that does not matter for this application.
+
+**This does not work. The pixel clock is a hardware floor, not a tuning knob.**
+25 MHz was tried as a clean single variable against a 30 MHz build that had
+produced a picture, and the panel went black. That is now the second data point:
+20 MHz also blacked it. 30 MHz is the only clock that has ever displayed
+anything on this board, and the vendor uses 30.85 MHz. This is what a panel
+timing controller does below its minimum specified pixel clock. The earlier
+20 MHz result had been dismissed as a warm-reset confound; the 25 MHz test shows
+it was real.
+
+Restored to 30 MHz. **Do not spend another cycle lowering the pixel clock.**
+The panel's ~40 MB/s continuous PSRAM read demand is fixed by hardware, so
+relieving contention has to come from the application side. Untried levers:
+
+- The JPEG decode path's PSRAM traffic, which matches the reported correlation
+  between stripes and artwork loading. Decoding into internal RAM, or bounding
+  concurrent decode work, would cut the largest burst competing with the panel.
+- `num_fbs = 2`, which is untested rather than ruled out (see the correction
+  above) and is what Waveshare's flawless demo uses.
+
 What this round does **not** establish:
 
 - The panel-rail power cycle is reasoned from the expander's documented role
@@ -305,8 +412,8 @@ move those numbers did not change what it claimed to change.
 - [x] Cold boot and a remembered-profile reboot both report `Wide7B`.
 - [ ] Display is 1024×600 landscape with correct colors, no drift/flicker/tearing, and stable backlight.
 - [ ] Serial boot log reports `RGB timing: 30 MHz pixel clock, 10-line bounce buffers`. Check the setup screen before Wi-Fi, then leave Now Playing untouched for five minutes with Spotify connected; neither should develop shifted lines or flicker.
-- [ ] Boot log reports `[board] LVGL draw buffer: 1024 x 16 rows, 1 buffer(s), internal RAM`. `PSRAM (degraded)` means the internal allocation failed and the tearing fix is not in effect.
-- [ ] While artwork/thumbnails load, repeatedly drag volume/seek, hold a control, and scroll Library. Record persistent drift separately from brief tearing during redraws; the framebuffer still uses unsynchronized partial updates.
+- [ ] Boot log reports `[board] LVGL draw buffer: 1024 x 16 rows, 1 buffer(s), internal RAM`. `PSRAM (degraded)` means the internal allocation failed and the throughput fix is not in effect.
+- [ ] While artwork/thumbnails load, repeatedly drag volume/seek, hold a control, and scroll Library. Watch specifically for a narrow distorted band at the left edge: that is a FIFO underrun clocking a line out late, and it is the residual form of the original whole-picture shift. It is a known, unresolved limitation; see the two-framebuffer result below.
 - [ ] Compare the five-second `[7B] flush ... KB/s copied into PSRAM` line on an idle Now Playing screen against the moment a cover loads. A large drop is PSRAM bus contention; it should no longer coincide with visible tearing.
 - [ ] GT911 reports accurately at all four corners and gestures track the expected direction.
 - [ ] Runtime native USB appears after the expander selects USB; UART1 remains usable for logs/provisioning.

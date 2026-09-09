@@ -1,0 +1,73 @@
+# Waveshare 7B performance profile, for the source-built ESP-IDF SDK only.
+# Keep the application and 30 MHz panel timings fixed for the comparison.
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_120M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_120M=y
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+CONFIG_SPIRAM_MEMTEST=y
+
+# Cache. The bounce-buffer refill ISR streams sequentially through a 1.2 MB
+# PSRAM framebuffer roughly 3300 times a second while Wi-Fi, TLS and JPEG
+# decode evict its lines. The 64-byte line halves the transaction count for
+# those bulk reads; the 64 KB data cache halves how often they miss. Both are
+# in Waveshare's profile, which runs this panel flawlessly on this board.
+# ESP-IDF defaults are 32 KB data / 16 KB instruction, which is what the
+# earlier "vendor memory profile" build actually shipped -- the line size was
+# set, the sizes were not. sketch.cpp now asserts all four.
+CONFIG_ESP32S3_DATA_CACHE_64KB=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+
+# Do NOT enable CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR on this
+# board. It looks like the correct hardening for 120 MHz octal PSRAM, whose
+# timing point drifts with die temperature, and Waveshare's defaults appear to
+# use it. It bricks this board into a boot loop: psram_adjust_timing_point_via_tsens
+# in mspi_timing_by_mspi_delay.c accepts only flash vendor ID 0xC8 or 0x20, and
+# returns ESP_ERR_NOT_SUPPORTED for anything else from an ESP_SYSTEM_INIT_FN, so
+# startup aborts before any application code runs. Measured here: 16 reboots in
+# 15 seconds. Waveshare's defaults set only the measurement interval, which is
+# inert without this switch, so the vendor demo that runs flawlessly on this
+# board runs 120 MHz PSRAM with a boot-time tuning point and no retuning.
+# That is the configuration to match.
+#
+# The underlying risk is real and remains open: Espressif documents random PSRAM
+# access failures once the die drifts ~20 C from power-on, and this device runs
+# for hours. If long-run instability appears that a cold start clears, the
+# available remedy is dropping to CONFIG_SPIRAM_SPEED_80M, not this switch.
+
+CONFIG_LCD_RGB_RESTART_IN_VSYNC=y
+
+# Preserve the deployed partition layout and stored provisioning.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_FREERTOS_HZ=1000
+CONFIG_AUTOSTART_ARDUINO=y
+CONFIG_ARDUINO_VARIANT="esp32s3"
+CONFIG_ARDUINO_RUN_CORE1=y
+CONFIG_ARDUINO_LOOP_STACK_SIZE=8192
+CONFIG_ARDUINO_SELECTIVE_COMPILATION=y
+CONFIG_ARDUINO_SELECTIVE_SPI=y
+CONFIG_ARDUINO_SELECTIVE_Wire=y
+CONFIG_ARDUINO_SELECTIVE_Preferences=y
+CONFIG_ARDUINO_SELECTIVE_FS=y
+CONFIG_ARDUINO_SELECTIVE_SD=y
+CONFIG_ARDUINO_SELECTIVE_SPIFFS=y
+CONFIG_ARDUINO_SELECTIVE_LittleFS=y
+CONFIG_ARDUINO_SELECTIVE_Network=y
+CONFIG_ARDUINO_SELECTIVE_WiFi=y
+CONFIG_ARDUINO_SELECTIVE_HTTPClient=y
+CONFIG_ARDUINO_SELECTIVE_NetworkClientSecure=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+# Arduino's ssl_client.cpp requires PSK support to compile its TLS transport,
+# even though Spotify uses certificate-validated HTTPS rather than PSK.
+CONFIG_MBEDTLS_PSK_MODES=y
+CONFIG_MBEDTLS_KEY_EXCHANGE_PSK=y

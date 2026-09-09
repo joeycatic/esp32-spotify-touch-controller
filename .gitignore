@@ -11,3 +11,4 @@ docs/superpowers/
 .env
 secrets.json
 provisioning.json
+/firmware/idf/managed_components/

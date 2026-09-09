@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Refine Library browsing on the 7B with a two-column playlist-card layout,
+  a dedicated Liked Songs action, clearer track rows, and visible navigation
+  and current-track states. Compact keeps its existing single-column layout.
+
 ## [1.0.0-rc.3] - 2026-09-09
 
 Third release candidate. The 7B display is running on hardware for the first

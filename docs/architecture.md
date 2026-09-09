@@ -50,6 +50,6 @@ Album artwork is center-cropped only if Spotify supplies a non-square image, the
 
 ## UI and Recovery
 
-The UI owns shared playback state and semantic callbacks. Compact retains the original portrait coordinates. Wide screens use a 64-pixel top bar, focused 400-pixel artwork/player split, minimum 64-pixel controls, and a persistent 72-pixel bottom navigation bar.
+The UI owns shared playback state and semantic callbacks. Compact retains the original portrait coordinates and single-column browse lists. Wide screens use a 64-pixel top bar, focused 400-pixel artwork/player split, minimum 64-pixel controls, and a persistent 72-pixel bottom navigation bar. On the 7B, Library uses two-column playlist cards with a separate Liked Songs action; playlist tracks use full-width rows with separate title, artist, duration, and current-track states. Shared static LVGL styles keep those repeated rows from allocating a new style for every item.
 
 Compact factory reset remains a ten-second BOOT hold. On 7B, BOOT is sampled before GPIO0 becomes RGB G3; a boot-time hold enters provisioning, while credential erasure requires holding the on-screen reset control for three seconds. Credential erasure clears `spotctl` but leaves the independently verified hardware hint in `spotctl_hw`.

@@ -5,6 +5,7 @@
 
 #include "../core/RuntimePolicy.h"
 #include "AnimationPolicy.h"
+#include "BrowseStyle.h"
 #include "EventBinding.h"
 #include "UiLayout.h"
 
@@ -171,6 +172,10 @@ void Ui::addWideChrome() {
                                   static_cast<lv_coord_t>(i * 202 + 4), 2,
                                   194, 64, items[i].callback);
     lv_obj_set_style_radius(button, 12, 0);
+    if (i == 1 && (screen_ == Screen::Library || screen_ == Screen::Playlist)) {
+      lv_obj_set_style_bg_color(button, lv_color_hex(0x182A22), 0);
+      lv_obj_set_style_text_color(button, lv_color_hex(0x1ED760), 0);
+    }
   }
   if (connection_badge_ != nullptr) {
     lv_obj_move_foreground(connection_badge_);
@@ -506,15 +511,26 @@ void Ui::showLibrary(bool request_data) {
   }
   lv_obj_t *heading = lv_label_create(lv_scr_act());
   lv_label_set_text(heading, "Your Library");
-  lv_obj_set_style_text_font(heading, &lv_font_montserrat_18, 0);
-  lv_obj_set_pos(heading, board_.wide() ? 48 : 52, board_.wide() ? 82 : 11);
+  lv_obj_set_style_text_font(heading, board_.wide() ? &lv_font_montserrat_24
+                                                   : &lv_font_montserrat_18, 0);
+  lv_obj_set_pos(heading, board_.wide() ? 44 : 52, board_.wide() ? 86 : 11);
+  if (board_.wide()) {
+    lv_obj_t *detail = lv_label_create(lv_scr_act());
+    lv_label_set_text(detail, "Find your next listen");
+    lv_obj_set_pos(detail, 44, 120);
+    lv_obj_set_style_text_font(detail, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(detail, lv_color_hex(0xA6ABB2), 0);
+    lv_obj_t *liked = makeButton(lv_scr_act(), LV_SYMBOL_AUDIO "   Liked Songs",
+                                 736, 80, 248, 64, likedEvent);
+    lv_obj_set_style_radius(liked, 16, 0);
+    lv_obj_set_style_bg_color(liked, lv_color_hex(0x182A22), 0);
+    lv_obj_set_style_text_color(liked, lv_color_hex(0x1ED760), 0);
+  }
   list_ = lv_list_create(lv_scr_act());
-  lv_obj_set_pos(list_, board_.wide() ? 40 : 4, board_.wide() ? 125 : 44);
+  lv_obj_set_pos(list_, board_.wide() ? 40 : 4, board_.wide() ? 160 : 44);
   lv_obj_set_size(list_, board_.wide() ? 944 : 232,
-                  board_.wide() ? 387 : 222);
-  lv_obj_set_style_bg_color(list_, lv_color_hex(0x080A0C), 0);
-  lv_obj_set_style_border_width(list_, 0, 0);
-  lv_obj_set_style_pad_all(list_, 2, 0);
+                  board_.wide() ? 352 : 222);
+  styleBrowseList(list_, board_.wide(), true);
   lv_obj_add_event_cb(list_, listScrollEvent, LV_EVENT_SCROLL_END, this);
   rebuildPlaylistRows();
   updateMiniPlayer();
@@ -702,9 +718,12 @@ void Ui::rebuildPlaylistRows() {
   }
   const lv_coord_t scroll_y = lv_obj_get_scroll_y(list_);
   lv_obj_clean(list_);
-  lv_obj_t *liked = lv_list_add_btn(list_, LV_SYMBOL_AUDIO, "Liked Songs");
-  lv_obj_set_style_bg_color(liked, lv_color_hex(0x182A22), 0);
-  lv_obj_add_event_cb(liked, likedEvent, LV_EVENT_CLICKED, this);
+  if (!board_.wide()) {
+    lv_obj_t *liked = lv_list_add_btn(list_, LV_SYMBOL_AUDIO, "Liked Songs");
+    styleBrowseRow(liked, true);
+    lv_obj_set_height(liked, 52);
+    lv_obj_add_event_cb(liked, likedEvent, LV_EVENT_CLICKED, this);
+  }
   for (size_t index = 0; index < playlists_.size(); ++index) {
     const PlaylistSummary &playlist = playlists_[index];
     std::string label = playlist.name;
@@ -714,8 +733,22 @@ void Ui::rebuildPlaylistRows() {
     if (!playlist.items_browsable) {
       label += "  (play only)";
     }
-    lv_obj_t *row = lv_list_add_btn(list_, LV_SYMBOL_AUDIO, label.c_str());
-    lv_obj_set_height(row, board_.wide() ? 68 : 52);
+    lv_obj_t *row;
+    if (board_.wide()) {
+      std::string detail = playlist.owner.empty() ? "Playlist"
+                                                 : "by " + playlist.owner;
+      if (!playlist.items_browsable) {
+        detail = "Play only / " + detail;
+      }
+      row = makeWideBrowseRow(list_, playlist.name.c_str(), detail.c_str(),
+                              playlist.items_browsable ? LV_SYMBOL_RIGHT
+                                                       : LV_SYMBOL_PLAY,
+                              true);
+    } else {
+      row = lv_list_add_btn(list_, LV_SYMBOL_AUDIO, label.c_str());
+      lv_obj_set_height(row, 52);
+      styleBrowseRow(row);
+    }
     lv_obj_set_user_data(row, reinterpret_cast<void *>(index + 1));
     lv_obj_add_event_cb(row, playlistEvent, LV_EVENT_CLICKED, this);
   }
@@ -741,15 +774,15 @@ void Ui::showTracks(const std::string &title) {
                  board_.wide() ? 94 : 9);
   lv_obj_set_width(heading, board_.wide() ? 820 : 180);
   lv_label_set_long_mode(heading, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_style_text_font(heading, &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_font(heading, board_.wide() ? &lv_font_montserrat_24
+                                                   : &lv_font_montserrat_18, 0);
   lv_label_set_text(heading, title.c_str());
   list_ = lv_list_create(lv_scr_act());
   lv_obj_set_pos(list_, board_.wide() ? 40 : 4,
                  board_.wide() ? 152 : 44);
   lv_obj_set_size(list_, board_.wide() ? 944 : 232,
                   board_.wide() ? 360 : 222);
-  lv_obj_set_style_bg_color(list_, lv_color_hex(0x080A0C), 0);
-  lv_obj_set_style_border_width(list_, 0, 0);
+  styleBrowseList(list_, board_.wide(), false);
   lv_obj_add_event_cb(list_, listScrollEvent, LV_EVENT_SCROLL_END, this);
   rebuildTrackRows();
   updateMiniPlayer();
@@ -806,8 +839,19 @@ void Ui::rebuildTrackRows() {
     if (track.duration_ms > 0) {
       label += "  ·  " + clockText(track.duration_ms);
     }
-    lv_obj_t *row = lv_list_add_btn(list_, LV_SYMBOL_PLAY, label.c_str());
-    lv_obj_set_height(row, board_.wide() ? 68 : 54);
+    lv_obj_t *row;
+    if (board_.wide()) {
+      const std::string duration = track.duration_ms > 0
+                                       ? clockText(track.duration_ms)
+                                       : "";
+      row = makeWideBrowseRow(list_, track.title.c_str(), track.artists.c_str(),
+                              duration.c_str(), false,
+                              playback_.item.uri == track.uri);
+    } else {
+      row = lv_list_add_btn(list_, LV_SYMBOL_PLAY, label.c_str());
+      lv_obj_set_height(row, 54);
+      styleBrowseRow(row, playback_.item.uri == track.uri);
+    }
     lv_obj_set_user_data(row, reinterpret_cast<void *>(index + 1));
     lv_obj_add_event_cb(row, trackEvent, LV_EVENT_CLICKED, this);
   }

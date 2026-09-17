@@ -32,28 +32,15 @@ bool Wide7BBackend::begin() {
     log7B("I/O expander initialization failed");
     return false;
   }
-  log7B("I/O expander ready; display power on, backlight off");
+  log7B("I/O expander ready; LCD reset and VCOM high, backlight low");
 
   pinMode(4, OUTPUT);
-  expander_.set(WaveshareIoExpander7B::TouchReset, false);
-  expander_.set(WaveshareIoExpander7B::LcdReset, false);
-  // The expander keeps its own power and latches its outputs, so a warm reset
-  // (which is how every flash and every serial-triggered reboot ends) leaves the
-  // panel rail already enabled and the panel running with whatever state it had
-  // when the CPU was reset. Waveshare's FAQ answers the resulting black screen
-  // with "disconnect and reconnect power"; dropping the rail here does that in
-  // firmware, so a warm reset reaches the panel as a cold start.
-  expander_.set(WaveshareIoExpander7B::LcdPowerEnable, false);
-  delay(60);
-  expander_.set(WaveshareIoExpander7B::LcdPowerEnable, true);
-  delay(60);
-  log7B("panel rail power-cycled");
-  expander_.set(WaveshareIoExpander7B::LcdReset, true);
-  delay(100);
   digitalWrite(4, LOW);
+  expander_.set(WaveshareIoExpander7B::TouchReset, false);
   delay(100);
   expander_.set(WaveshareIoExpander7B::TouchReset, true);
   delay(200);
+  log7B("touch reset released; LCD reset and VCOM remained high");
   pinMode(4, INPUT_PULLUP);
   touch_ready_ = touch_.begin(Wire, 1024, 600);
   log7B(touch_ready_ ? "GT911 ready" : "GT911 unavailable");

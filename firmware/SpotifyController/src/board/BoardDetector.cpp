@@ -1,4 +1,5 @@
 #include "BoardDetector.h"
+#include "WaveshareIoExpander7B.h"
 
 #include <Preferences.h>
 
@@ -13,8 +14,10 @@ constexpr uint8_t kCst816Address = 0x15;
 constexpr uint8_t kWideModeRegister = 0x02;
 constexpr uint8_t kWideOutputRegister = 0x03;
 constexpr uint8_t kWidePwmRegister = 0x05;
-constexpr uint8_t kWideSafeOutputs = 0xD1;
-constexpr uint8_t kWideTouchReadyOutputs = 0xD3;
+constexpr uint8_t kWideSafeOutputs =
+    WaveshareIoExpander7B::startupOutputs(false);
+constexpr uint8_t kWideTouchReadyOutputs =
+    WaveshareIoExpander7B::startupOutputs(true);
 } // namespace
 
 BoardProfile BoardProfileStore::load() const {
@@ -97,7 +100,8 @@ bool BoardDetector::probeWide() {
 
   // EXIO1 holds the 7B's GT911 in reset. Select the documented 0x5D
   // address with GPIO4 low, release reset, and only then verify product ID.
-  // LCD reset and the backlight stay disabled until the backend is selected.
+  // Preserve LCD reset and VCOM high. Only the backlight stays disabled until
+  // the backend is selected.
   pinMode(4, OUTPUT);
   digitalWrite(4, LOW);
   delay(100);

@@ -8,6 +8,7 @@
 #include "core/AppState.h"
 #include "board/BoardProfile.h"
 #include "board/TouchTransform.h"
+#include "board/WaveshareIoExpander7B.h"
 #include "core/RuntimePolicy.h"
 #include "provision/ProvisioningValidation.h"
 #include "spotify/SpotifyParser.h"
@@ -82,6 +83,34 @@ void boardProfilesAreConservativeAndImmutable() {
   EXPECT_EQ(compact.display.width, static_cast<uint16_t>(240));
   EXPECT_EQ(compact.media.player_art_size, static_cast<uint16_t>(184));
   EXPECT_FALSE(compact.media.row_thumbnails);
+}
+
+void wideDisplayStartupPreservesLcdResetAndVcom() {
+  TwoWire wire;
+  spotctl::WaveshareIoExpander7B expander;
+
+  EXPECT_TRUE(expander.begin(wire));
+  EXPECT_TRUE(expander.set(spotctl::WaveshareIoExpander7B::TouchReset, true));
+  EXPECT_EQ(wire.transmissions.size(), static_cast<size_t>(3));
+  if (wire.transmissions.size() != 3) {
+    return;
+  }
+
+  EXPECT_EQ(wire.transmissions[0].address, static_cast<uint8_t>(0x24));
+  EXPECT_EQ(wire.transmissions[0].bytes,
+            std::vector<uint8_t>({0x02, 0xFF}));
+
+  // LCD reset (bit 3) and VCOM (bit 6) stay high. Touch reset (bit 1) and the
+  // backlight (bit 2) start low; SD remains deselected and USB remains selected.
+  EXPECT_EQ(wire.transmissions[1].address, static_cast<uint8_t>(0x24));
+  EXPECT_EQ(wire.transmissions[1].bytes,
+            std::vector<uint8_t>({0x03, 0xD9}));
+
+  // Releasing touch reset changes only bit 1; LCD reset and VCOM remain high
+  // and the backlight remains low.
+  EXPECT_EQ(wire.transmissions[2].address, static_cast<uint8_t>(0x24));
+  EXPECT_EQ(wire.transmissions[2].bytes,
+            std::vector<uint8_t>({0x03, 0xDB}));
 }
 
 void layoutsStayInsideTheirDisplays() {
@@ -638,6 +667,7 @@ void unexplainedFailuresNameTheStatusTheyGotBack() {
 
 int main() {
   boardProfilesAreConservativeAndImmutable();
+  wideDisplayStartupPreservesLcdResetAndVcom();
   layoutsStayInsideTheirDisplays();
   touchCornersRemainInsideBothProfiles();
   pollIntervalTracksPlaybackState();

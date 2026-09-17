@@ -24,10 +24,9 @@ bool WaveshareIoExpander7B::begin(TwoWire &wire) {
   if (!writeRegister(kModeRegister, 0xFF)) {
     return false;
   }
-  // Explicit safe state: SD deselected, USB selected, LCD power enabled,
-  // display/touch held in reset, and the backlight disabled.
-  output_ = static_cast<uint8_t>((1U << SdChipSelect) |
-                                 (1U << LcdPowerEnable) | 0x81U);
+  // Preserve the panel's power-on state. The backend releases touch reset after
+  // selecting its I2C address; LCD reset and VCOM remain high throughout.
+  output_ = startupOutputs(false);
   // IO2 keeps the backlight physically disabled. Leave the PWM register
   // untouched here, matching Waveshare's LCD bring-up sequence; it is set
   // immediately before IO2 is enabled by setBacklight().

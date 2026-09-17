@@ -13,8 +13,17 @@ public:
     LcdReset = 3,
     SdChipSelect = 4,
     UsbCanSelect = 5,
-    LcdPowerEnable = 6,
+    LcdVcomEnable = 6,
   };
+
+  // The panel performs its own power-on initialization. Keep its reset and
+  // VCOM controls asserted across ESP32 resets; only touch reset and the
+  // backlight start low. Board detection and backend startup must use the same
+  // mask so neither stage can silently reset an already powered panel.
+  static constexpr uint8_t startupOutputs(bool touch_released = false) {
+    return static_cast<uint8_t>(0xD9U |
+                                (touch_released ? (1U << TouchReset) : 0U));
+  }
 
   bool begin(TwoWire &wire);
   bool set(Pin pin, bool high);

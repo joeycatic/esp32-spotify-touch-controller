@@ -1,23 +1,29 @@
 #pragma once
 
+#include <Arduino.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_rgb.h>
+#include <lvgl.h>
 
-#include "BoardBackend.h"
+#include "BoardProfile.h"
 #include "Gt911Touch.h"
 #include "WaveshareIoExpander7B.h"
 
 namespace spotctl {
 
-class Wide7BBackend final : public BoardBackend {
+// The one display backend. This was a virtual BoardBackend while a 240x320
+// board shared the code; with a single target the indirection only hid which
+// panel the caller was really talking to.
+class Wide7BBackend {
 public:
-  bool begin() override;
-  bool touchReady() const override { return touch_ready_; }
-  void draw(const lv_area_t &area, const lv_color_t *colors) override;
-  bool readTouch(uint16_t &x, uint16_t &y) override;
-  void setBacklight(uint8_t percent) override;
-  void poll() override;
-  const BoardCapabilities &capabilities() const override { return capabilities_; }
+  bool begin();
+  bool touchReady() const { return touch_ready_; }
+  void draw(const lv_area_t &area, const lv_color_t *colors);
+  bool readTouch(uint16_t &x, uint16_t &y);
+  void setBacklight(uint8_t percent);
+  // Called from the main loop, outside LVGL's render and flush stack, so
+  // diagnostics never add work to the display hot path.
+  void poll();
 
 private:
   void reportFlushThroughput();
@@ -32,7 +38,6 @@ private:
   uint32_t flush_bytes_{0};
   uint32_t flush_count_{0};
   uint32_t report_started_ms_{0};
-  const BoardCapabilities capabilities_{capabilitiesFor(BoardProfile::Wide7B)};
 };
 
 } // namespace spotctl

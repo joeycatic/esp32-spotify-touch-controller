@@ -57,8 +57,7 @@ void Ui::begin(bool provisioning_mode) {
   last_interaction_ms_ = millis();
   provisioning_screen_ = provisioning_mode;
   if (provisioning_mode) {
-    showSetup(board_.wide() ? "Connect UART1 to set up"
-                            : "Connect USB to set up",
+    showSetup("Connect UART1 to set up",
               "Run make provision after creating your Spotify app.");
   } else {
     showSetup("Starting", "Connecting securely to Spotify...");
@@ -81,8 +80,6 @@ void Ui::clear() {
   shuffle_button_ = nullptr;
   repeat_button_ = nullptr;
   list_ = nullptr;
-  mini_title_ = nullptr;
-  mini_play_label_ = nullptr;
   message_label_ = nullptr;
   connection_badge_ = nullptr;
   calibration_target_ = nullptr;
@@ -98,7 +95,7 @@ void Ui::applyBaseStyle() {
   lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
   lv_obj_set_style_text_color(screen, lv_color_hex(0xF7F7F7), 0);
   lv_obj_set_style_text_font(
-      screen, board_.wide() ? &lv_font_montserrat_18 : &lv_font_montserrat_14,
+      screen, &lv_font_montserrat_18,
       0);
   // Nothing on these screens scrolls as a whole, and a scrollable screen
   // consumes horizontal drags as panning instead of emitting a gesture.
@@ -122,17 +119,14 @@ void Ui::applyBaseStyle() {
   lv_obj_set_style_pad_ver(connection_badge_, 2, 0);
   lv_obj_set_style_radius(connection_badge_, 4, 0);
   lv_obj_align(connection_badge_, LV_ALIGN_TOP_RIGHT,
-               board_.wide() ? -76 : -3, board_.wide() ? 22 : 2);
+               -76, 22);
   if (!offline_) {
     lv_obj_add_flag(connection_badge_, LV_OBJ_FLAG_HIDDEN);
   }
   lv_obj_move_foreground(connection_badge_);
 }
 
-void Ui::addWideChrome() {
-  if (!board_.wide()) {
-    return;
-  }
+void Ui::addChrome() {
   lv_obj_t *top = lv_obj_create(lv_scr_act());
   lv_obj_set_pos(top, 0, 0);
   lv_obj_set_size(top, 1024, 64);
@@ -182,11 +176,149 @@ void Ui::addWideChrome() {
   }
 }
 
-void Ui::showWidePlayer() {
+void Ui::showSettings() {
+  clear();
+  applyBaseStyle();
+  screen_ = Screen::Diagnostics;
+  addChrome();
+  lv_obj_t *heading = lv_label_create(lv_scr_act());
+  lv_label_set_text(heading, "Diagnostics & setup");
+  lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
+  lv_obj_set_pos(heading, 48, 92);
+  const HardwareStatus &hardware = board_.status();
+  char detail[180];
+  snprintf(detail, sizeof(detail),
+           "%s\nDisplay %s   Touch %s   Flash %u MB   PSRAM %u MB",
+           kBoardCapabilities.model, hardware.display_ready ? "OK" : "FAIL",
+           hardware.touch_ready ? "OK" : "FAIL",
+           static_cast<unsigned>(hardware.flash_bytes / (1024U * 1024U)),
+           static_cast<unsigned>(hardware.psram_bytes / (1024U * 1024U)));
+  status_label_ = lv_label_create(lv_scr_act());
+  lv_label_set_text(status_label_, detail);
+  lv_obj_set_pos(status_label_, 48, 145);
+  lv_obj_set_style_text_color(status_label_, lv_color_hex(0xA6ABB2), 0);
+  makeButton(lv_scr_act(), "Touch test", 48, 240, 280, 64, diagnosticsEvent);
+  factory_reset_button_ = lv_btn_create(lv_scr_act());
+  lv_obj_set_pos(factory_reset_button_, 48, 330);
+  lv_obj_set_size(factory_reset_button_, 360, 64);
+  lv_obj_set_style_radius(factory_reset_button_, 32, 0);
+  lv_obj_set_style_bg_color(factory_reset_button_, lv_color_hex(0x7A1D2B), 0);
+  lv_obj_t *reset_label = lv_label_create(factory_reset_button_);
+  lv_label_set_text(reset_label, "Hold 3s: reset setup");
+  lv_obj_center(reset_label);
+  lv_obj_add_event_cb(factory_reset_button_, factoryResetEvent, LV_EVENT_ALL,
+                      this);
+}
+
+lv_obj_t *Ui::makeButton(lv_obj_t *parent, const char *symbol, lv_coord_t x,
+                         lv_coord_t y, lv_coord_t width, lv_coord_t height,
+                         lv_event_cb_t callback) {
+  lv_obj_t *button = lv_btn_create(parent);
+  lv_obj_set_pos(button, x, y);
+  lv_obj_set_size(button, width, height);
+  lv_obj_set_style_radius(button, height / 2, 0);
+  lv_obj_set_style_bg_color(button, lv_color_hex(0x171A1F), 0);
+  lv_obj_set_style_bg_color(button, lv_color_hex(0x1ED760), LV_STATE_PRESSED);
+  const ButtonAnimationPlan animation = buttonAnimationPlan();
+  lv_obj_set_style_translate_y(button, animation.pressed_translate_y_px,
+                               LV_STATE_PRESSED);
+  lv_obj_set_style_transition(button, buttonTransition(false), 0);
+  lv_obj_set_style_transition(button, buttonTransition(true),
+                              LV_STATE_PRESSED);
+  lv_obj_set_style_shadow_width(button, 0, 0);
+  lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED, this);
+  lv_obj_t *label = lv_label_create(button);
+  lv_label_set_text(label, symbol);
+  lv_obj_center(label);
+  return button;
+}
+
+void Ui::showSetup(const char *title, const char *detail) {
+  clear();
+  applyBaseStyle();
+  screen_ = Screen::Setup;
+  lv_obj_t *logo = lv_label_create(lv_scr_act());
+  lv_label_set_text(logo, LV_SYMBOL_AUDIO);
+  lv_obj_set_style_text_color(logo, lv_color_hex(0x1ED760), 0);
+  lv_obj_set_style_text_font(logo, &lv_font_montserrat_24, 0);
+  lv_obj_align(logo, LV_ALIGN_CENTER, 0, -120);
+
+  title_label_ = lv_label_create(lv_scr_act());
+  lv_label_set_text(title_label_, title);
+  lv_obj_set_width(title_label_, 760);
+  lv_obj_set_style_text_align(title_label_, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_font(title_label_,
+                             &lv_font_montserrat_24,
+                             0);
+  lv_obj_align(title_label_, LV_ALIGN_CENTER, 0, -55);
+
+  subtitle_label_ = lv_label_create(lv_scr_act());
+  lv_label_set_long_mode(subtitle_label_, LV_LABEL_LONG_WRAP);
+  lv_obj_set_width(subtitle_label_, 760);
+  lv_obj_set_style_text_color(subtitle_label_, lv_color_hex(0xB3B3B3), 0);
+  lv_obj_set_style_text_align(subtitle_label_, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_text(subtitle_label_, detail);
+  lv_obj_align(subtitle_label_, LV_ALIGN_CENTER, 0, 10);
+
+  const HardwareStatus &hardware = board_.status();
+  char diagnostics[64];
+  snprintf(diagnostics, sizeof(diagnostics), "Display %s  Touch %s\nFlash %u MB  PSRAM %u MB",
+           hardware.display_ready ? "OK" : "FAIL",
+           hardware.touch_ready ? "OK" : "FAIL",
+           static_cast<unsigned>(hardware.flash_bytes / (1024U * 1024U)),
+           static_cast<unsigned>(hardware.psram_bytes / (1024U * 1024U)));
+  status_label_ = lv_label_create(lv_scr_act());
+  lv_label_set_text(status_label_, diagnostics);
+  lv_obj_set_style_text_color(status_label_, lv_color_hex(0x6F7680), 0);
+  lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(status_label_, LV_ALIGN_BOTTOM_MID, 0, -80);
+  lv_obj_add_flag(status_label_, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(status_label_, diagnosticsEvent, LV_EVENT_CLICKED, this);
+}
+
+void Ui::showConnecting(const char *ssid) {
+  std::string detail = "Joining ";
+  detail += ssid;
+  showSetup("Connecting to Wi-Fi", detail.c_str());
+}
+
+void Ui::showOnline() { setOffline(false); }
+
+void Ui::showOffline() {
+  setOffline(true);
+  showMessage("Offline - reconnecting", true);
+}
+
+void Ui::setOffline(bool offline) {
+  offline_ = offline;
+  if (connection_badge_ != nullptr) {
+    if (offline_) {
+      lv_obj_clear_flag(connection_badge_, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_move_foreground(connection_badge_);
+    } else {
+      lv_obj_add_flag(connection_badge_, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (screen_ == Screen::Player && status_label_ != nullptr) {
+    lv_label_set_text(status_label_,
+                      offline_ ? "Offline"
+                               : (playback_.device.name.empty()
+                                      ? "No active device"
+                                      : playback_.device.name.c_str()));
+  }
+}
+
+
+
+void Ui::showSetupSaved() {
+  showSetup("Setup saved", "Restarting...");
+}
+
+void Ui::showPlayer() {
   clear();
   applyBaseStyle();
   screen_ = Screen::Player;
-  addWideChrome();
+  addChrome();
 
   status_label_ = lv_label_create(lv_scr_act());
   lv_label_set_text(status_label_, playback_.device.name.empty()
@@ -255,285 +387,32 @@ void Ui::showWidePlayer() {
   updatePlaybackWidgets();
 }
 
-void Ui::showWideSettings() {
-  clear();
-  applyBaseStyle();
-  screen_ = Screen::Diagnostics;
-  addWideChrome();
-  lv_obj_t *heading = lv_label_create(lv_scr_act());
-  lv_label_set_text(heading, "Diagnostics & setup");
-  lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
-  lv_obj_set_pos(heading, 48, 92);
-  const HardwareStatus &hardware = board_.status();
-  char detail[180];
-  snprintf(detail, sizeof(detail),
-           "%s\nDisplay %s   Touch %s   Flash %u MB   PSRAM %u MB",
-           boardProfileName(hardware.profile), hardware.display_ready ? "OK" : "FAIL",
-           hardware.touch_ready ? "OK" : "FAIL",
-           static_cast<unsigned>(hardware.flash_bytes / (1024U * 1024U)),
-           static_cast<unsigned>(hardware.psram_bytes / (1024U * 1024U)));
-  status_label_ = lv_label_create(lv_scr_act());
-  lv_label_set_text(status_label_, detail);
-  lv_obj_set_pos(status_label_, 48, 145);
-  lv_obj_set_style_text_color(status_label_, lv_color_hex(0xA6ABB2), 0);
-  makeButton(lv_scr_act(), "Touch test", 48, 240, 280, 64, diagnosticsEvent);
-  factory_reset_button_ = lv_btn_create(lv_scr_act());
-  lv_obj_set_pos(factory_reset_button_, 48, 330);
-  lv_obj_set_size(factory_reset_button_, 360, 64);
-  lv_obj_set_style_radius(factory_reset_button_, 32, 0);
-  lv_obj_set_style_bg_color(factory_reset_button_, lv_color_hex(0x7A1D2B), 0);
-  lv_obj_t *reset_label = lv_label_create(factory_reset_button_);
-  lv_label_set_text(reset_label, "Hold 3s: reset setup");
-  lv_obj_center(reset_label);
-  lv_obj_add_event_cb(factory_reset_button_, factoryResetEvent, LV_EVENT_ALL,
-                      this);
-}
-
-lv_obj_t *Ui::makeButton(lv_obj_t *parent, const char *symbol, lv_coord_t x,
-                         lv_coord_t y, lv_coord_t width, lv_coord_t height,
-                         lv_event_cb_t callback) {
-  lv_obj_t *button = lv_btn_create(parent);
-  lv_obj_set_pos(button, x, y);
-  lv_obj_set_size(button, width, height);
-  lv_obj_set_style_radius(button, height / 2, 0);
-  lv_obj_set_style_bg_color(button, lv_color_hex(0x171A1F), 0);
-  lv_obj_set_style_bg_color(button, lv_color_hex(0x1ED760), LV_STATE_PRESSED);
-  const ButtonAnimationPlan animation = buttonAnimationPlan();
-  lv_obj_set_style_translate_y(button, animation.pressed_translate_y_px,
-                               LV_STATE_PRESSED);
-  lv_obj_set_style_transition(button, buttonTransition(false), 0);
-  lv_obj_set_style_transition(button, buttonTransition(true),
-                              LV_STATE_PRESSED);
-  lv_obj_set_style_shadow_width(button, 0, 0);
-  lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED, this);
-  lv_obj_t *label = lv_label_create(button);
-  lv_label_set_text(label, symbol);
-  lv_obj_center(label);
-  return button;
-}
-
-void Ui::showSetup(const char *title, const char *detail) {
-  clear();
-  applyBaseStyle();
-  screen_ = Screen::Setup;
-  lv_obj_t *logo = lv_label_create(lv_scr_act());
-  lv_label_set_text(logo, LV_SYMBOL_AUDIO);
-  lv_obj_set_style_text_color(logo, lv_color_hex(0x1ED760), 0);
-  lv_obj_set_style_text_font(logo, &lv_font_montserrat_24, 0);
-  lv_obj_align(logo, LV_ALIGN_CENTER, 0, board_.wide() ? -120 : -70);
-
-  title_label_ = lv_label_create(lv_scr_act());
-  lv_label_set_text(title_label_, title);
-  lv_obj_set_width(title_label_, board_.wide() ? 760 : 216);
-  lv_obj_set_style_text_align(title_label_, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_font(title_label_,
-                             board_.wide() ? &lv_font_montserrat_24
-                                           : &lv_font_montserrat_18,
-                             0);
-  lv_obj_align(title_label_, LV_ALIGN_CENTER, 0, board_.wide() ? -55 : -20);
-
-  subtitle_label_ = lv_label_create(lv_scr_act());
-  lv_label_set_long_mode(subtitle_label_, LV_LABEL_LONG_WRAP);
-  lv_obj_set_width(subtitle_label_, board_.wide() ? 760 : 204);
-  lv_obj_set_style_text_color(subtitle_label_, lv_color_hex(0xB3B3B3), 0);
-  lv_obj_set_style_text_align(subtitle_label_, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(subtitle_label_, detail);
-  lv_obj_align(subtitle_label_, LV_ALIGN_CENTER, 0, board_.wide() ? 10 : 35);
-
-  const HardwareStatus &hardware = board_.status();
-  char diagnostics[64];
-  snprintf(diagnostics, sizeof(diagnostics), "Display %s  Touch %s\nFlash %u MB  PSRAM %u MB",
-           hardware.display_ready ? "OK" : "FAIL",
-           hardware.touch_ready ? "OK" : "FAIL",
-           static_cast<unsigned>(hardware.flash_bytes / (1024U * 1024U)),
-           static_cast<unsigned>(hardware.psram_bytes / (1024U * 1024U)));
-  status_label_ = lv_label_create(lv_scr_act());
-  lv_label_set_text(status_label_, diagnostics);
-  lv_obj_set_style_text_color(status_label_, lv_color_hex(0x6F7680), 0);
-  lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_align(status_label_, LV_ALIGN_BOTTOM_MID, 0, board_.wide() ? -80 : -20);
-  lv_obj_add_flag(status_label_, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(status_label_, diagnosticsEvent, LV_EVENT_CLICKED, this);
-}
-
-void Ui::showConnecting(const char *ssid) {
-  std::string detail = "Joining ";
-  detail += ssid;
-  showSetup("Connecting to Wi-Fi", detail.c_str());
-}
-
-void Ui::showOnline() { setOffline(false); }
-
-void Ui::showOffline() {
-  setOffline(true);
-  showMessage("Offline - reconnecting", true);
-}
-
-void Ui::setOffline(bool offline) {
-  offline_ = offline;
-  if (connection_badge_ != nullptr) {
-    if (offline_) {
-      lv_obj_clear_flag(connection_badge_, LV_OBJ_FLAG_HIDDEN);
-      lv_obj_move_foreground(connection_badge_);
-    } else {
-      lv_obj_add_flag(connection_badge_, LV_OBJ_FLAG_HIDDEN);
-    }
-  }
-  if (screen_ == Screen::Player && status_label_ != nullptr) {
-    lv_label_set_text(status_label_,
-                      offline_ ? "Offline"
-                               : (playback_.device.name.empty()
-                                      ? "No active device"
-                                      : playback_.device.name.c_str()));
-  }
-}
-
-void Ui::showFactoryResetCountdown(uint8_t seconds_remaining) {
-  char detail[96];
-  snprintf(detail, sizeof(detail),
-           "Keep holding BOOT to erase saved Wi-Fi and Spotify login.\n%u seconds remaining",
-           seconds_remaining);
-  showSetup("Factory reset", detail);
-}
-
-void Ui::showFactoryResetComplete() {
-  provisioning_screen_ = true;
-  showSetup("Factory reset complete", "Run make provision to configure the controller again.");
-}
-
-void Ui::showSetupSaved() {
-  showSetup("Setup saved", "Restarting...");
-}
-
-void Ui::showPlayer() {
-  if (board_.wide()) {
-    showWidePlayer();
-    return;
-  }
-  clear();
-  applyBaseStyle();
-  screen_ = Screen::Player;
-
-  lv_obj_t *spotify = lv_label_create(lv_scr_act());
-  lv_label_set_text(spotify, "SPOTIFY");
-  lv_obj_set_style_text_color(spotify, lv_color_hex(0x1ED760), 0);
-  lv_obj_set_style_text_font(spotify, &lv_font_montserrat_12, 0);
-  lv_obj_set_pos(spotify, 10, 4);
-  lv_obj_add_flag(spotify, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(spotify, spotifyLinkEvent, LV_EVENT_CLICKED, this);
-
-  status_label_ = lv_label_create(lv_scr_act());
-  lv_label_set_text(status_label_, playback_.device.name.empty()
-                                      ? "No active device"
-                                      : playback_.device.name.c_str());
-  lv_obj_set_style_text_color(status_label_, lv_color_hex(0x858B94), 0);
-  lv_obj_set_style_text_font(status_label_, &lv_font_montserrat_12, 0);
-  lv_obj_align(status_label_, LV_ALIGN_TOP_RIGHT, -10, 4);
-  lv_obj_add_flag(status_label_, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(status_label_, deviceEvent, LV_EVENT_CLICKED, this);
-
-  artwork_placeholder_ = lv_obj_create(lv_scr_act());
-  lv_obj_set_pos(artwork_placeholder_, 28, 20);
-  lv_obj_set_size(artwork_placeholder_, 184, 184);
-  lv_obj_set_style_bg_color(artwork_placeholder_, lv_color_hex(0x15191E), 0);
-  lv_obj_set_style_border_width(artwork_placeholder_, 0, 0);
-  lv_obj_set_style_radius(artwork_placeholder_, 8, 0);
-  lv_obj_t *note = lv_label_create(artwork_placeholder_);
-  lv_label_set_text(note, LV_SYMBOL_AUDIO);
-  lv_obj_set_style_text_color(note, lv_color_hex(0x39414B), 0);
-  lv_obj_set_style_text_font(note, &lv_font_montserrat_24, 0);
-  lv_obj_center(note);
-
-  artwork_image_ = lv_img_create(lv_scr_act());
-  lv_obj_set_pos(artwork_image_, 28, 20);
-  lv_obj_set_size(artwork_image_, 184, 184);
-  // The object size is the size after zoom, so a larger cover scales into
-  // this box instead of the box itself being scaled down.
-  lv_img_set_size_mode(artwork_image_, LV_IMG_SIZE_MODE_REAL);
-  lv_obj_add_flag(artwork_image_, LV_OBJ_FLAG_HIDDEN);
-  lv_img_set_antialias(artwork_image_, true);
-
-  title_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_pos(title_label_, 12, 207);
-  lv_obj_set_width(title_label_, 216);
-  lv_label_set_long_mode(title_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_style_text_font(title_label_, &lv_font_montserrat_16, 0);
-
-  subtitle_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_pos(subtitle_label_, 12, 228);
-  lv_obj_set_width(subtitle_label_, 216);
-  lv_label_set_long_mode(subtitle_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_style_text_color(subtitle_label_, lv_color_hex(0xA6ABB2), 0);
-  lv_obj_set_style_text_font(subtitle_label_, &lv_font_montserrat_12, 0);
-
-  progress_slider_ = lv_slider_create(lv_scr_act());
-  lv_obj_set_pos(progress_slider_, 12, 247);
-  lv_obj_set_size(progress_slider_, 216, 10);
-  lv_obj_set_style_bg_color(progress_slider_, lv_color_hex(0x343940),
-                            LV_PART_MAIN);
-  lv_obj_set_style_bg_color(progress_slider_, lv_color_hex(0x1ED760),
-                            LV_PART_INDICATOR);
-  lv_obj_set_style_bg_opa(progress_slider_, LV_OPA_TRANSP, LV_PART_KNOB);
-  lv_obj_add_event_cb(progress_slider_, seekEvent, LV_EVENT_RELEASED, this);
-
-  elapsed_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_pos(elapsed_label_, 12, 257);
-  duration_label_ = lv_label_create(lv_scr_act());
-  lv_obj_align(duration_label_, LV_ALIGN_TOP_RIGHT, -12, 257);
-  for (lv_obj_t *time_label : {elapsed_label_, duration_label_}) {
-    lv_obj_set_style_text_color(time_label, lv_color_hex(0x747B84), 0);
-    lv_obj_set_style_text_font(time_label, &lv_font_montserrat_12, 0);
-  }
-
-  shuffle_button_ = makeButton(lv_scr_act(), LV_SYMBOL_SHUFFLE, 2, 275, 36, 40,
-                               shuffleEvent);
-  makeButton(lv_scr_act(), LV_SYMBOL_PREV, 40, 275, 40, 40, previousEvent);
-  lv_obj_t *play = makeButton(lv_scr_act(), LV_SYMBOL_PLAY, 82, 270, 48, 48,
-                              playEvent);
-  play_button_label_ = lv_obj_get_child(play, 0);
-  makeButton(lv_scr_act(), LV_SYMBOL_NEXT, 132, 275, 40, 40, nextEvent);
-  repeat_button_ = makeButton(lv_scr_act(), LV_SYMBOL_LOOP, 174, 275, 36, 40,
-                              repeatEvent);
-  makeButton(lv_scr_act(), LV_SYMBOL_VOLUME_MAX, 212, 275, 26, 40,
-             volumeOpenEvent);
-
-  updatePlaybackWidgets();
-}
-
 void Ui::showLibrary(bool request_data) {
   clear();
   applyBaseStyle();
   screen_ = Screen::Library;
-  if (board_.wide()) {
-    addWideChrome();
-  } else {
-    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
-  }
+  addChrome();
   lv_obj_t *heading = lv_label_create(lv_scr_act());
   lv_label_set_text(heading, "Your Library");
-  lv_obj_set_style_text_font(heading, board_.wide() ? &lv_font_montserrat_24
-                                                   : &lv_font_montserrat_18, 0);
-  lv_obj_set_pos(heading, board_.wide() ? 44 : 52, board_.wide() ? 86 : 11);
-  if (board_.wide()) {
-    lv_obj_t *detail = lv_label_create(lv_scr_act());
-    lv_label_set_text(detail, "Find your next listen");
-    lv_obj_set_pos(detail, 44, 120);
-    lv_obj_set_style_text_font(detail, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(detail, lv_color_hex(0xA6ABB2), 0);
-    lv_obj_t *liked = makeButton(lv_scr_act(), LV_SYMBOL_AUDIO "   Liked Songs",
-                                 736, 80, 248, 64, likedEvent);
-    lv_obj_set_style_radius(liked, 16, 0);
-    lv_obj_set_style_bg_color(liked, lv_color_hex(0x182A22), 0);
-    lv_obj_set_style_text_color(liked, lv_color_hex(0x1ED760), 0);
-  }
+  lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
+  lv_obj_set_pos(heading, 44, 86);
+  lv_obj_t *detail = lv_label_create(lv_scr_act());
+  lv_label_set_text(detail, "Find your next listen");
+  lv_obj_set_pos(detail, 44, 120);
+  lv_obj_set_style_text_font(detail, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(detail, lv_color_hex(0xA6ABB2), 0);
+  lv_obj_t *liked = makeButton(lv_scr_act(), LV_SYMBOL_AUDIO "   Liked Songs",
+                               736, 80, 248, 64, likedEvent);
+  lv_obj_set_style_radius(liked, 16, 0);
+  lv_obj_set_style_bg_color(liked, lv_color_hex(0x182A22), 0);
+  lv_obj_set_style_text_color(liked, lv_color_hex(0x1ED760), 0);
   list_ = lv_list_create(lv_scr_act());
-  lv_obj_set_pos(list_, board_.wide() ? 40 : 4, board_.wide() ? 160 : 44);
-  lv_obj_set_size(list_, board_.wide() ? 944 : 232,
-                  board_.wide() ? 352 : 222);
-  styleBrowseList(list_, board_.wide(), true);
+  lv_obj_set_pos(list_, 40, 160);
+  lv_obj_set_size(list_, 944,
+                  352);
+  styleBrowseList(list_, true);
   lv_obj_add_event_cb(list_, listScrollEvent, LV_EVENT_SCROLL_END, this);
   rebuildPlaylistRows();
-  updateMiniPlayer();
   if (request_data) {
     requestPlaylists();
   }
@@ -718,12 +597,6 @@ void Ui::rebuildPlaylistRows() {
   }
   const lv_coord_t scroll_y = lv_obj_get_scroll_y(list_);
   lv_obj_clean(list_);
-  if (!board_.wide()) {
-    lv_obj_t *liked = lv_list_add_btn(list_, LV_SYMBOL_AUDIO, "Liked Songs");
-    styleBrowseRow(liked, true);
-    lv_obj_set_height(liked, 52);
-    lv_obj_add_event_cb(liked, likedEvent, LV_EVENT_CLICKED, this);
-  }
   for (size_t index = 0; index < playlists_.size(); ++index) {
     const PlaylistSummary &playlist = playlists_[index];
     std::string label = playlist.name;
@@ -734,21 +607,15 @@ void Ui::rebuildPlaylistRows() {
       label += "  (play only)";
     }
     lv_obj_t *row;
-    if (board_.wide()) {
-      std::string detail = playlist.owner.empty() ? "Playlist"
-                                                 : "by " + playlist.owner;
-      if (!playlist.items_browsable) {
-        detail = "Play only / " + detail;
-      }
-      row = makeWideBrowseRow(list_, playlist.name.c_str(), detail.c_str(),
-                              playlist.items_browsable ? LV_SYMBOL_RIGHT
-                                                       : LV_SYMBOL_PLAY,
-                              true);
-    } else {
-      row = lv_list_add_btn(list_, LV_SYMBOL_AUDIO, label.c_str());
-      lv_obj_set_height(row, 52);
-      styleBrowseRow(row);
+    std::string detail = playlist.owner.empty() ? "Playlist"
+                                               : "by " + playlist.owner;
+    if (!playlist.items_browsable) {
+      detail = "Play only / " + detail;
     }
+    row = makeBrowseRow(list_, playlist.name.c_str(), detail.c_str(),
+                            playlist.items_browsable ? LV_SYMBOL_RIGHT
+                                                     : LV_SYMBOL_PLAY,
+                            true);
     lv_obj_set_user_data(row, reinterpret_cast<void *>(index + 1));
     lv_obj_add_event_cb(row, playlistEvent, LV_EVENT_CLICKED, this);
   }
@@ -763,29 +630,23 @@ void Ui::showTracks(const std::string &title) {
   clear();
   applyBaseStyle();
   screen_ = Screen::Playlist;
-  if (board_.wide()) {
-    addWideChrome();
-    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 40, 76, 64, 64, backEvent);
-  } else {
-    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
-  }
+  addChrome();
+  makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 40, 76, 64, 64, backEvent);
   lv_obj_t *heading = lv_label_create(lv_scr_act());
-  lv_obj_set_pos(heading, board_.wide() ? 124 : 50,
-                 board_.wide() ? 94 : 9);
-  lv_obj_set_width(heading, board_.wide() ? 820 : 180);
+  lv_obj_set_pos(heading, 124,
+                 94);
+  lv_obj_set_width(heading, 820);
   lv_label_set_long_mode(heading, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_style_text_font(heading, board_.wide() ? &lv_font_montserrat_24
-                                                   : &lv_font_montserrat_18, 0);
+  lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
   lv_label_set_text(heading, title.c_str());
   list_ = lv_list_create(lv_scr_act());
-  lv_obj_set_pos(list_, board_.wide() ? 40 : 4,
-                 board_.wide() ? 152 : 44);
-  lv_obj_set_size(list_, board_.wide() ? 944 : 232,
-                  board_.wide() ? 360 : 222);
-  styleBrowseList(list_, board_.wide(), false);
+  lv_obj_set_pos(list_, 40,
+                 152);
+  lv_obj_set_size(list_, 944,
+                  360);
+  styleBrowseList(list_, false);
   lv_obj_add_event_cb(list_, listScrollEvent, LV_EVENT_SCROLL_END, this);
   rebuildTrackRows();
-  updateMiniPlayer();
 }
 
 void Ui::showPlayOnly(const PlaylistSummary &playlist) {
@@ -793,20 +654,16 @@ void Ui::showPlayOnly(const PlaylistSummary &playlist) {
   clear();
   applyBaseStyle();
   screen_ = Screen::Playlist;
-  if (board_.wide()) {
-    addWideChrome();
-    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 40, 76, 64, 64, backEvent);
-  } else {
-    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
-  }
+  addChrome();
+  makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 40, 76, 64, 64, backEvent);
   title_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_width(title_label_, board_.wide() ? 700 : 210);
+  lv_obj_set_width(title_label_, 700);
   lv_obj_set_style_text_align(title_label_, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_font(title_label_, &lv_font_montserrat_20, 0);
   lv_label_set_text(title_label_, playlist.name.c_str());
-  lv_obj_align(title_label_, LV_ALIGN_CENTER, 0, board_.wide() ? -90 : -55);
+  lv_obj_align(title_label_, LV_ALIGN_CENTER, 0, -90);
   subtitle_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_width(subtitle_label_, board_.wide() ? 700 : 205);
+  lv_obj_set_width(subtitle_label_, 700);
   lv_label_set_long_mode(subtitle_label_, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(subtitle_label_, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_text_color(subtitle_label_, lv_color_hex(0xA6ABB2), 0);
@@ -814,13 +671,12 @@ void Ui::showPlayOnly(const PlaylistSummary &playlist) {
                     "Spotify allows this playlist to be started, but its song list is hidden in development mode.");
   lv_obj_align(subtitle_label_, LV_ALIGN_CENTER, 0, 5);
   lv_obj_t *play = makeButton(lv_scr_act(), LV_SYMBOL_PLAY,
-                              board_.wide() ? 432 : 65,
-                              board_.wide() ? 350 : 210,
-                              board_.wide() ? 160 : 110,
-                              board_.wide() ? 72 : 48,
+                              432,
+                              350,
+                              160,
+                              72,
                               playPlaylistEvent);
   lv_obj_set_style_bg_color(play, lv_color_hex(0x1ED760), 0);
-  updateMiniPlayer();
 }
 
 void Ui::rebuildTrackRows() {
@@ -840,18 +696,12 @@ void Ui::rebuildTrackRows() {
       label += "  ·  " + clockText(track.duration_ms);
     }
     lv_obj_t *row;
-    if (board_.wide()) {
-      const std::string duration = track.duration_ms > 0
-                                       ? clockText(track.duration_ms)
-                                       : "";
-      row = makeWideBrowseRow(list_, track.title.c_str(), track.artists.c_str(),
-                              duration.c_str(), false,
-                              playback_.item.uri == track.uri);
-    } else {
-      row = lv_list_add_btn(list_, LV_SYMBOL_PLAY, label.c_str());
-      lv_obj_set_height(row, 54);
-      styleBrowseRow(row, playback_.item.uri == track.uri);
-    }
+    const std::string duration = track.duration_ms > 0
+                                     ? clockText(track.duration_ms)
+                                     : "";
+    row = makeBrowseRow(list_, track.title.c_str(), track.artists.c_str(),
+                            duration.c_str(), false,
+                            playback_.item.uri == track.uri);
     lv_obj_set_user_data(row, reinterpret_cast<void *>(index + 1));
     lv_obj_add_event_cb(row, trackEvent, LV_EVENT_CLICKED, this);
   }
@@ -866,21 +716,17 @@ void Ui::showDevices() {
   clear();
   applyBaseStyle();
   screen_ = Screen::Devices;
-  if (board_.wide()) {
-    addWideChrome();
-  } else {
-    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
-  }
+  addChrome();
   lv_obj_t *heading = lv_label_create(lv_scr_act());
   lv_label_set_text(heading, "Play on");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_18, 0);
-  lv_obj_set_pos(heading, board_.wide() ? 48 : 52,
-                 board_.wide() ? 82 : 11);
+  lv_obj_set_pos(heading, 48,
+                 82);
   list_ = lv_list_create(lv_scr_act());
-  lv_obj_set_pos(list_, board_.wide() ? 40 : 4,
-                 board_.wide() ? 125 : 48);
-  lv_obj_set_size(list_, board_.wide() ? 944 : 232,
-                  board_.wide() ? 387 : 264);
+  lv_obj_set_pos(list_, 40,
+                 125);
+  lv_obj_set_size(list_, 944,
+                  387);
   lv_obj_set_style_bg_color(list_, lv_color_hex(0x080A0C), 0);
   lv_obj_set_style_border_width(list_, 0, 0);
   rebuildDeviceRows();
@@ -888,9 +734,9 @@ void Ui::showDevices() {
 
 void Ui::showVolumeOverlay() {
   lv_obj_t *panel = lv_obj_create(lv_scr_act());
-  lv_obj_set_size(panel, board_.wide() ? 560 : 220,
-                  board_.wide() ? 190 : 112);
-  lv_obj_align(panel, LV_ALIGN_CENTER, 0, board_.wide() ? 0 : 45);
+  lv_obj_set_size(panel, 560,
+                  190);
+  lv_obj_align(panel, LV_ALIGN_CENTER, 0, 0);
   lv_obj_set_style_bg_color(panel, lv_color_hex(0x171A1F), 0);
   lv_obj_set_style_border_color(panel, lv_color_hex(0x31363E), 0);
   lv_obj_set_style_radius(panel, 12, 0);
@@ -902,8 +748,8 @@ void Ui::showVolumeOverlay() {
   lv_obj_set_pos(heading, 6, 3);
 
   lv_obj_t *close = lv_btn_create(panel);
-  lv_obj_set_size(close, board_.wide() ? 64 : 34,
-                  board_.wide() ? 64 : 30);
+  lv_obj_set_size(close, 64,
+                  64);
   lv_obj_align(close, LV_ALIGN_TOP_RIGHT, 7, -7);
   lv_obj_set_style_bg_opa(close, LV_OPA_TRANSP, 0);
   lv_obj_set_style_shadow_width(close, 0, 0);
@@ -913,10 +759,10 @@ void Ui::showVolumeOverlay() {
   lv_obj_center(close_label);
 
   lv_obj_t *slider = lv_slider_create(panel);
-  lv_obj_set_pos(slider, board_.wide() ? 20 : 8,
-                 board_.wide() ? 102 : 55);
-  lv_obj_set_size(slider, board_.wide() ? 480 : 176,
-                  board_.wide() ? 24 : 16);
+  lv_obj_set_pos(slider, 20,
+                 102);
+  lv_obj_set_size(slider, 480,
+                  24);
   lv_slider_set_range(slider, 0, 100);
   lv_slider_set_value(slider, std::max(0, playback_.volume_percent), LV_ANIM_OFF);
   lv_obj_set_style_bg_color(slider, lv_color_hex(0x1ED760), LV_PART_INDICATOR);
@@ -953,26 +799,22 @@ void Ui::showQrCode() {
   clear();
   applyBaseStyle();
   screen_ = Screen::QrCode;
-  if (board_.wide()) {
-    addWideChrome();
-  } else {
-    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
-  }
+  addChrome();
   lv_obj_t *heading = lv_label_create(lv_scr_act());
   lv_label_set_text(heading, "Open in Spotify");
   lv_obj_set_style_text_font(heading, &lv_font_montserrat_18, 0);
-  lv_obj_align(heading, LV_ALIGN_TOP_MID, 0, board_.wide() ? 78 : 12);
-  lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), board_.wide() ? 360 : 204,
+  lv_obj_align(heading, LV_ALIGN_TOP_MID, 0, 78);
+  lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), 360,
                                   lv_color_hex(0x000000),
                                   lv_color_hex(0xFFFFFF));
   lv_qrcode_update(qr, playback_.item.spotify_url.data(),
                    playback_.item.spotify_url.size());
-  lv_obj_align(qr, LV_ALIGN_CENTER, 0, board_.wide() ? 10 : 14);
+  lv_obj_align(qr, LV_ALIGN_CENTER, 0, 10);
   lv_obj_t *caption = lv_label_create(lv_scr_act());
   lv_label_set_text(caption, "Scan with your phone");
   lv_obj_set_style_text_color(caption, lv_color_hex(0xA6ABB2), 0);
   lv_obj_align(caption, LV_ALIGN_BOTTOM_MID, 0,
-               board_.wide() ? -82 : -10);
+               -82);
 }
 
 void Ui::showTouchCalibration() {
@@ -980,21 +822,17 @@ void Ui::showTouchCalibration() {
   applyBaseStyle();
   screen_ = Screen::Diagnostics;
   calibration_step_ = 0;
-  if (board_.wide()) {
-    addWideChrome();
-    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 40, 72, 64, 64, backEvent);
-  } else {
-    makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 4, 4, 38, 34, backEvent);
-  }
+  addChrome();
+  makeButton(lv_scr_act(), LV_SYMBOL_LEFT, 40, 72, 64, 64, backEvent);
   calibration_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_width(calibration_label_, board_.wide() ? 620 : 170);
+  lv_obj_set_width(calibration_label_, 620);
   lv_obj_set_style_text_align(calibration_label_, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_text(calibration_label_, "Touch each green corner target");
   lv_obj_align(calibration_label_, LV_ALIGN_CENTER, 0, 0);
   calibration_target_ = lv_btn_create(lv_scr_act());
-  const lv_coord_t target = board_.wide() ? 64 : 44;
+  const lv_coord_t target = 64;
   lv_obj_set_size(calibration_target_, target, target);
-  lv_obj_set_pos(calibration_target_, 0, board_.wide() ? 64 : 42);
+  lv_obj_set_pos(calibration_target_, 0, 64);
   lv_obj_set_style_radius(calibration_target_, target / 2, 0);
   lv_obj_set_style_bg_color(calibration_target_, lv_color_hex(0x1ED760), 0);
   lv_obj_add_event_cb(calibration_target_, calibrationEvent, LV_EVENT_CLICKED, this);
@@ -1046,37 +884,6 @@ void Ui::updatePlaybackWidgets() {
       lv_obj_clear_flag(artwork_placeholder_, LV_OBJ_FLAG_HIDDEN);
     }
   }
-  updateMiniPlayer();
-}
-
-void Ui::updateMiniPlayer() {
-  if (board_.wide()) {
-    return;
-  }
-  if (screen_ != Screen::Library && screen_ != Screen::Playlist) {
-    return;
-  }
-  if (mini_title_ == nullptr) {
-    lv_obj_t *bar = lv_obj_create(lv_scr_act());
-    lv_obj_set_pos(bar, 4, 268);
-    lv_obj_set_size(bar, 232, 48);
-    lv_obj_set_style_bg_color(bar, lv_color_hex(0x171A1F), 0);
-    lv_obj_set_style_border_width(bar, 0, 0);
-    lv_obj_set_style_radius(bar, 8, 0);
-    mini_title_ = lv_label_create(bar);
-    lv_obj_set_pos(mini_title_, 8, 7);
-    lv_obj_set_width(mini_title_, 168);
-    lv_label_set_long_mode(mini_title_, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_t *play = makeButton(bar, LV_SYMBOL_PLAY, 182, 2, 42, 42, playEvent);
-    mini_play_label_ = lv_obj_get_child(play, 0);
-  }
-  if (mini_title_ != nullptr) {
-    lv_label_set_text(mini_title_, playback_.has_item
-                                       ? playback_.item.title.c_str()
-                                       : "Nothing playing");
-    lv_label_set_text(mini_play_label_,
-                      playback_.is_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
-  }
 }
 
 void Ui::animatePlayerSwipe(SwipeDirection direction) {
@@ -1105,7 +912,7 @@ void Ui::animatePlayerSwipe(SwipeDirection direction) {
 void Ui::showMessage(const std::string &message, bool error) {
   destroyMessage();
   message_label_ = lv_label_create(lv_scr_act());
-  lv_obj_set_width(message_label_, board_.wide() ? 640 : 220);
+  lv_obj_set_width(message_label_, 640);
   lv_label_set_long_mode(message_label_, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(message_label_, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_style_bg_opa(message_label_, LV_OPA_90, 0);
@@ -1139,8 +946,7 @@ void Ui::handle(const NetworkEvent &event) {
   case NetworkEventType::AuthorizationRequired:
     provisioning_screen_ = true;
     showSetup("Spotify login required",
-              board_.wide() ? "Reconnect UART1 and run make provision."
-                            : "Reconnect USB and run make provision.");
+              "Reconnect UART1 and run make provision.");
     break;
   case NetworkEventType::Playback:
     {
@@ -1489,17 +1295,13 @@ void Ui::calibrationEvent(lv_event_t *event) {
                                 0);
     return;
   }
-  static constexpr lv_coord_t compact_positions[4][2] = {
-      {0, 42}, {196, 42}, {196, 276}, {0, 276}};
-  static constexpr lv_coord_t wide_positions[4][2] = {
+  static constexpr lv_coord_t positions[4][2] = {
       {0, 64}, {960, 64}, {960, 464}, {0, 464}};
-  const lv_coord_t(*positions)[2] =
-      ui->board_.wide() ? wide_positions : compact_positions;
   lv_obj_set_pos(ui->calibration_target_, positions[ui->calibration_step_][0],
                  positions[ui->calibration_step_][1]);
 }
 
-void Ui::settingsEvent(lv_event_t *event) { self(event)->showWideSettings(); }
+void Ui::settingsEvent(lv_event_t *event) { self(event)->showSettings(); }
 
 void Ui::nowPlayingEvent(lv_event_t *event) { self(event)->showPlayer(); }
 

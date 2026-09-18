@@ -29,8 +29,6 @@ public:
   void showConnecting(const char *ssid);
   void showOnline();
   void showOffline();
-  void showFactoryResetCountdown(uint8_t seconds_remaining);
-  void showFactoryResetComplete();
   void showSetupSaved();
   UiAction pollAction();
 
@@ -64,9 +62,8 @@ private:
 
   void clear();
   void applyBaseStyle();
-  void addWideChrome();
-  void showWidePlayer();
-  void showWideSettings();
+  void addChrome();
+  void showSettings();
   lv_obj_t *makeButton(lv_obj_t *parent, const char *symbol, lv_coord_t x,
                        lv_coord_t y, lv_coord_t width, lv_coord_t height,
                        lv_event_cb_t callback);
@@ -96,7 +93,6 @@ private:
   void rebuildTrackRows();
   void rebuildDeviceRows();
   void updatePlaybackWidgets();
-  void updateMiniPlayer();
   void animatePlayerSwipe(SwipeDirection direction);
   void showMessage(const std::string &message, bool error = false);
   void destroyMessage();
@@ -141,8 +137,6 @@ private:
   lv_obj_t *shuffle_button_{nullptr};
   lv_obj_t *repeat_button_{nullptr};
   lv_obj_t *list_{nullptr};
-  lv_obj_t *mini_title_{nullptr};
-  lv_obj_t *mini_play_label_{nullptr};
   lv_obj_t *message_label_{nullptr};
   lv_obj_t *connection_badge_{nullptr};
   lv_obj_t *calibration_target_{nullptr};

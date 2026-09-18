@@ -35,23 +35,23 @@ inline void styleBrowseRow(lv_obj_t *row, bool highlighted = false) {
   lv_obj_add_style(row, &pressed, LV_STATE_PRESSED);
 }
 
-inline void styleBrowseList(lv_obj_t *list, bool wide, bool library) {
+inline void styleBrowseList(lv_obj_t *list, bool library) {
   lv_obj_set_style_bg_color(list, lv_color_hex(0x080A0C), 0);
   lv_obj_set_style_border_width(list, 0, 0);
   lv_obj_set_style_radius(list, 0, 0);
-  lv_obj_set_style_pad_all(list, wide ? 4 : 2, 0);
-  lv_obj_set_style_pad_right(list, wide ? 12 : 2, 0);
-  lv_obj_set_style_pad_row(list, wide ? 12 : 6, 0);
+  lv_obj_set_style_pad_all(list, 4, 0);
+  lv_obj_set_style_pad_right(list, 12, 0);
+  lv_obj_set_style_pad_row(list, 12, 0);
   lv_obj_set_style_pad_column(list, 16, 0);
-  lv_obj_set_flex_flow(list, wide && library ? LV_FLEX_FLOW_ROW_WRAP
-                                            : LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_flow(list, library ? LV_FLEX_FLOW_ROW_WRAP
+                                     : LV_FLEX_FLOW_COLUMN);
   lv_obj_set_scroll_dir(list, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_AUTO);
   lv_obj_set_style_bg_color(list, lv_color_hex(0x52605A), LV_PART_SCROLLBAR);
   lv_obj_set_style_width(list, 3, LV_PART_SCROLLBAR);
 }
 
-inline lv_obj_t *makeWideBrowseRow(lv_obj_t *list, const char *title,
+inline lv_obj_t *makeBrowseRow(lv_obj_t *list, const char *title,
                                    const char *detail, const char *trailing,
                                    bool library, bool highlighted = false) {
   static lv_style_t row_styles[2];

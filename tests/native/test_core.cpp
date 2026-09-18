@@ -7,7 +7,6 @@
 
 #include "core/AppState.h"
 #include "board/BoardProfile.h"
-#include "board/TouchTransform.h"
 #include "board/WaveshareIoExpander7B.h"
 #include "core/RuntimePolicy.h"
 #include "provision/ProvisioningValidation.h"
@@ -46,46 +45,25 @@ using spotctl::MediaItem;
 using spotctl::PlaybackSnapshot;
 using spotctl::Screen;
 
-void boardProfilesAreConservativeAndImmutable() {
-  EXPECT_EQ(spotctl::selectDetectedProfile({true, true, false}),
-            spotctl::BoardProfile::Wide7B);
-  EXPECT_EQ(spotctl::selectDetectedProfile({false, false, true}),
-            spotctl::BoardProfile::Compact2);
-  EXPECT_EQ(spotctl::selectDetectedProfile({true, false, false}),
-            spotctl::BoardProfile::Unknown);
-  EXPECT_EQ(spotctl::selectDetectedProfile({true, true, true}),
-            spotctl::BoardProfile::Unknown);
-  EXPECT_EQ(spotctl::selectBoardProfile(spotctl::BoardProfile::Wide7B, true,
-                                       {false, false, true}),
-            spotctl::BoardProfile::Wide7B);
-  EXPECT_EQ(spotctl::selectBoardProfile(spotctl::BoardProfile::Wide7B, false,
-                                       {false, false, true}),
-            spotctl::BoardProfile::Compact2);
-
-  const auto wide = spotctl::capabilitiesFor(spotctl::BoardProfile::Wide7B);
-  EXPECT_EQ(wide.display.width, static_cast<uint16_t>(1024));
-  EXPECT_EQ(wide.display.height, static_cast<uint16_t>(600));
-  EXPECT_EQ(wide.media.player_art_size, static_cast<uint16_t>(400));
-  EXPECT_EQ(wide.media.thumbnail_size, static_cast<uint16_t>(64));
-  EXPECT_TRUE(wide.media.row_thumbnails);
-  EXPECT_EQ(wide.serial, spotctl::SerialTransport::Uart0);
-  EXPECT_EQ(spotctl::frameBufferBytes(wide.display),
+void boardCapabilitiesAreImmutable() {
+  const auto board = spotctl::kBoardCapabilities;
+  EXPECT_EQ(board.display.width, static_cast<uint16_t>(1024));
+  EXPECT_EQ(board.display.height, static_cast<uint16_t>(600));
+  EXPECT_EQ(board.media.player_art_size, static_cast<uint16_t>(400));
+  EXPECT_EQ(board.media.thumbnail_size, static_cast<uint16_t>(64));
+  EXPECT_TRUE(board.media.row_thumbnails);
+  EXPECT_EQ(spotctl::frameBufferBytes(board.display),
             static_cast<size_t>(1228800));
-  // The RGB board renders single-buffered into internal RAM: 1024 x 16 rows is
+  // The panel renders single-buffered into internal RAM: 1024 x 16 rows is
   // 32 KiB, which fits alongside the panel's bounce buffers. Two 80 KiB buffers
   // did not, so they silently fell back to PSRAM and halved flush throughput.
-  EXPECT_EQ(wide.display.draw_buffer_rows, static_cast<uint16_t>(16));
-  EXPECT_EQ(wide.display.draw_buffer_count, static_cast<uint8_t>(1));
-  EXPECT_EQ(spotctl::drawBufferBytes(wide.display),
+  EXPECT_EQ(board.display.draw_buffer_rows, static_cast<uint16_t>(16));
+  EXPECT_EQ(board.display.draw_buffer_count, static_cast<uint8_t>(1));
+  EXPECT_EQ(spotctl::drawBufferBytes(board.display),
             static_cast<size_t>(32768));
-
-  const auto compact = spotctl::capabilitiesFor(spotctl::BoardProfile::Compact2);
-  EXPECT_EQ(compact.display.width, static_cast<uint16_t>(240));
-  EXPECT_EQ(compact.media.player_art_size, static_cast<uint16_t>(184));
-  EXPECT_FALSE(compact.media.row_thumbnails);
 }
 
-void wideDisplayStartupPreservesLcdResetAndVcom() {
+void displayStartupPreservesLcdResetAndVcom() {
   TwoWire wire;
   spotctl::WaveshareIoExpander7B expander;
 
@@ -113,31 +91,14 @@ void wideDisplayStartupPreservesLcdResetAndVcom() {
             std::vector<uint8_t>({0x03, 0xDB}));
 }
 
-void layoutsStayInsideTheirDisplays() {
-  const auto wide = spotctl::layoutFor(spotctl::BoardProfile::Wide7B);
-  EXPECT_EQ(wide.width, static_cast<uint16_t>(1024));
-  EXPECT_EQ(wide.top_bar_height + wide.bottom_nav_height < wide.height, true);
-  EXPECT_EQ(wide.player_art_size, static_cast<uint16_t>(400));
-  EXPECT_EQ(wide.minimum_touch_target, static_cast<uint16_t>(64));
-
-  const auto compact = spotctl::layoutFor(spotctl::BoardProfile::Compact2);
-  EXPECT_EQ(compact.width, static_cast<uint16_t>(240));
-  EXPECT_EQ(compact.height, static_cast<uint16_t>(320));
-}
-
-void touchCornersRemainInsideBothProfiles() {
-  uint16_t x = 0;
-  uint16_t y = 0;
-  EXPECT_TRUE(spotctl::transformTouchPoint(0, 0, 0, 1024, 600, x, y));
-  EXPECT_EQ(x, static_cast<uint16_t>(0));
-  EXPECT_EQ(y, static_cast<uint16_t>(0));
-  EXPECT_TRUE(spotctl::transformTouchPoint(1023, 599, 0, 1024, 600, x, y));
-  EXPECT_EQ(x, static_cast<uint16_t>(1023));
-  EXPECT_EQ(y, static_cast<uint16_t>(599));
-  EXPECT_TRUE(spotctl::transformTouchPoint(0, 0, 2, 240, 320, x, y));
-  EXPECT_EQ(x, static_cast<uint16_t>(239));
-  EXPECT_EQ(y, static_cast<uint16_t>(319));
-  EXPECT_FALSE(spotctl::transformTouchPoint(1024, 600, 0, 1024, 600, x, y));
+void layoutStaysInsideTheDisplay() {
+  const auto layout = spotctl::kUiLayout;
+  EXPECT_EQ(layout.width, static_cast<uint16_t>(1024));
+  EXPECT_EQ(layout.height, static_cast<uint16_t>(600));
+  EXPECT_EQ(layout.top_bar_height + layout.bottom_nav_height < layout.height,
+            true);
+  EXPECT_EQ(layout.player_art_size, static_cast<uint16_t>(400));
+  EXPECT_EQ(layout.minimum_touch_target, static_cast<uint16_t>(64));
 }
 
 void pollIntervalTracksPlaybackState() {
@@ -666,10 +627,9 @@ void unexplainedFailuresNameTheStatusTheyGotBack() {
 } // namespace
 
 int main() {
-  boardProfilesAreConservativeAndImmutable();
-  wideDisplayStartupPreservesLcdResetAndVcom();
-  layoutsStayInsideTheirDisplays();
-  touchCornersRemainInsideBothProfiles();
+  boardCapabilitiesAreImmutable();
+  displayStartupPreservesLcdResetAndVcom();
+  layoutStaysInsideTheDisplay();
   pollIntervalTracksPlaybackState();
   progressInterpolationClampsToDuration();
   retryBackoffIsBounded();

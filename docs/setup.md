@@ -28,15 +28,21 @@ picture is stable, and no sketch-level change reaches them. Build and flash the
 7B with the source-built ESP-IDF target instead, which rebuilds the framework
 with Waveshare's memory profile:
 
+```bash
+make build-idf
+make flash-idf
+```
+
+On Windows, use the matching PowerShell scripts:
+
 ```powershell
 ./scripts/build-idf.ps1
 ./scripts/flash-idf.ps1 -Port COM4
 ```
 
 Full setup and prerequisites are in [firmware/idf/README.md](../firmware/idf/README.md).
-The 2-inch board is unaffected and uses `make build` normally.
 
-After flashing a 7B, **disconnect all power for ten seconds** before judging the
+After flashing, **disconnect all power for ten seconds** before judging the
 display. This board shows a black screen after a warm reset often enough that
 Waveshare's own FAQ answers it with "disconnect and reconnect power"; a single
 post-flash boot is not evidence.
@@ -45,10 +51,9 @@ post-flash boot is not evidence.
 
 Connect the board with a USB-C data cable:
 
-- **ESP32-S3-Touch-LCD-7B:** use the connector labeled **UART1 / USB TO UART**. Set the nearby DIP switch to route the CH343 adapter to the ESP32, not the external UART header.
-- **ESP32-S3-Touch-LCD-2:** use its regular USB connector.
+Use the connector labeled **UART1 / USB TO UART**. Set the nearby DIP switch to route the CH343 adapter to the ESP32, not the external UART header.
 
-The 7B connector labeled USB is multiplexed with CAN through the board I/O expander and normally does not enumerate before firmware configures it. UART1 has the automatic download circuit and is the reliable flashing connector.
+The connector labeled USB is multiplexed with CAN through the board I/O expander and normally does not enumerate before firmware configures it. UART1 has the automatic download circuit and is the reliable flashing connector.
 
 ```bash
 make flash
@@ -60,9 +65,9 @@ If more than one serial device is connected, specify it:
 PORT=/dev/cu.usbserial-DEVICE make flash
 ```
 
-The host resolver ignores Bluetooth and debug pseudo-ports, recognizes Espressif native USB and the 7B CH343 adapter, and prefers UART1 when both 7B ports exist. It refuses to guess if multiple matching devices remain.
+The host resolver ignores Bluetooth and debug pseudo-ports, recognizes both the CH343 adapter and the board's native USB, and prefers UART1 when both ports exist. It refuses to guess if multiple matching devices remain.
 
-At boot, firmware verifies a remembered hardware profile, probes the 7B on GPIO8/9, and then probes the compact CST816 on GPIO48/47. It initializes a display only after a positive identity match. An unconfigured controller displays “Connect USB to set up”; an unidentified or failed display remains available for headless provisioning through UART1.
+At boot, firmware brings up the I²C bus on GPIO8/9, the `0x24` expander and the GT911 directly; there is no board detection. An unconfigured controller displays “Connect UART1 to set up”, and a display that fails to initialize remains available for headless provisioning through UART1.
 
 ## 3. Create the Spotify Application
 
@@ -127,16 +132,15 @@ On the 7B, the bottom navigation provides Now Playing, Library, Devices, Volume,
 
 ## Reprovisioning and Recovery
 
-- Change Wi-Fi or renew authorization: reset while holding BOOT, then run `make provision`. On the 7B, BOOT is sampled only at startup because GPIO0 becomes an RGB display signal.
-- 2-inch factory reset: reset while holding BOOT and continue holding for ten seconds. The screen shows the countdown before deleting saved credentials.
-- 7B factory reset: open the gear screen and hold **Reset setup** for three seconds. Releasing early cancels it.
+- Change Wi-Fi or renew authorization: reset while holding BOOT, then run `make provision`. BOOT is sampled only at startup because GPIO0 becomes an RGB display signal.
+- Factory reset: open the gear screen and hold **Reset setup** for three seconds. Releasing early cancels it.
 - Revoke access remotely: remove the application under the Spotify account’s connected-app settings. The controller will request USB authorization again after refresh fails.
 
 ## Troubleshooting
 
 ### No serial device
 
-For a 7B, first confirm the cable is in **UART1 / USB TO UART**, the DIP switch targets the ESP32, and the cable supports data. For a 2-inch board, use its normal USB port. Inspect USB-backed ports with:
+First confirm the cable is in **UART1 / USB TO UART**, the DIP switch targets the ESP32, and the cable supports data. Inspect USB-backed ports with:
 
 ```bash
 PYTHONPATH=tools/provision .venv/bin/python -m spotify_provision.ports
@@ -175,10 +179,10 @@ This is an expected Spotify development-mode restriction for some followed non-o
 
 ### Playlist or Liked Songs does not load
 
-Use `v1.0.0-rc.2` or newer. Earlier builds could leave too little contiguous internal memory for a Spotify TLS handshake after loading row artwork. The current build prefetches and caches the playlist page, gives API traffic priority, keeps compact rows as symbols, and bounds 7B thumbnail work. Run `make monitor` to see a TLS error code and heap diagnostics if a request still fails.
+Use `v1.0.0-rc.2` or newer. Earlier builds could leave too little contiguous internal memory for a Spotify TLS handshake after loading row artwork. The current build prefetches and caches the playlist page, gives API traffic priority, and bounds thumbnail work. Run `make monitor` to see a TLS error code and heap diagnostics if a request still fails.
 
 ### Artwork is missing
 
 Playback controls remain usable when an image URL is absent, decoding fails, or PSRAM is unavailable. A failed image download is retried on later playback polls; changing tracks also triggers a fresh load.
 
-Artwork is shown on Now Playing. The compact profile intentionally uses symbols on playlist/song rows to preserve contiguous memory for Spotify API connections. The 7B loads only visible 64-pixel row covers through a bounded cache, one idle download per pass.
+Artwork is shown on Now Playing. Playlist and song rows load only visible 64-pixel covers through a bounded cache, one idle download per pass, to preserve contiguous memory for Spotify API connections.

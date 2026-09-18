@@ -20,6 +20,7 @@ The 7B needs the separate [source-built ESP-IDF target](firmware/idf/README.md) 
 - Cover-first interface built for the 1024×600 landscape display
 - Play/pause, previous, next, seek, volume, shuffle, and repeat
 - Spotify Connect output-device picker and playback transfer
+- Up-next queue view, and add-to-queue from any playlist or Liked Songs row
 - Prefetched playlist and song browsing with cached 20-item pagination
 - Liked Songs browsing and selection
 - Play-only handling for followed playlists whose items Spotify hides

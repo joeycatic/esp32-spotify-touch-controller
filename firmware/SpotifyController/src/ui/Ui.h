@@ -58,6 +58,8 @@ private:
   static void nowPlayingEvent(lv_event_t *event);
   static void libraryNavEvent(lv_event_t *event);
   static void qrNavEvent(lv_event_t *event);
+  static void queueNavEvent(lv_event_t *event);
+  static void enqueueEvent(lv_event_t *event);
   static void factoryResetEvent(lv_event_t *event);
 
   void clear();
@@ -75,6 +77,8 @@ private:
   void showLibrary(bool request_data);
   void requestPlaylists();
   void showTracks(const std::string &title);
+  void showQueue();
+  void rebuildQueueRows();
   void showPlayOnly(const PlaylistSummary &playlist);
   void showDevices();
   void showVolumeOverlay();
@@ -108,6 +112,7 @@ private:
   bool playlists_have_more_{false};
   bool tracks_have_more_{false};
   bool tracks_are_liked_{false};
+  std::vector<TrackSummary> queue_;
   std::string track_list_title_;
   PlaylistSummary play_only_playlist_;
   ArtworkHandle artwork_;

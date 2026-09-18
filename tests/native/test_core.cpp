@@ -447,6 +447,36 @@ void trackParserSkipsUnavailableItemsAndKeepsPositions() {
   EXPECT_TRUE(page.has_more);
 }
 
+void queueParserReadsUpcomingTracks() {
+  // /me/player/queue returns bare track objects, not the {"track": {...}}
+  // wrappers a playlist page uses.
+  const std::string json = R"json({
+    "currently_playing": {"uri":"spotify:track:now","name":"Now",
+      "artists":[{"name":"Current"}],"duration_ms":1000,
+      "album":{"images":[{"url":"n64.jpg","width":64}]}},
+    "queue":[
+      {"uri":"spotify:track:a","name":"First","artists":[{"name":"One"},{"name":"Two"}],
+        "duration_ms":210000,
+        "album":{"images":[{"url":"a300.jpg","width":300},{"url":"a64.jpg","width":64}]}},
+      {"uri":"spotify:track:b","name":"Second","artists":[{"name":"Three"}],
+        "duration_ms":180000,"album":{"images":[]}}
+    ]})json";
+
+  std::vector<spotctl::TrackSummary> upcoming;
+  EXPECT_TRUE(spotctl::parseQueue(json, upcoming));
+  EXPECT_EQ(upcoming.size(), static_cast<size_t>(2));
+  if (upcoming.size() != 2) {
+    return;
+  }
+  EXPECT_EQ(upcoming[0].title, std::string("First"));
+  EXPECT_EQ(upcoming[0].artists, std::string("One, Two"));
+  EXPECT_EQ(upcoming[0].thumbnail_url, std::string("a64.jpg"));
+  // Position is the queue slot, so the UI can number rows without counting.
+  EXPECT_EQ(upcoming[0].position, 0U);
+  EXPECT_EQ(upcoming[1].title, std::string("Second"));
+  EXPECT_EQ(upcoming[1].position, 1U);
+}
+
 void deviceAndErrorParsersHandleSparseResponses() {
   const std::string devices_json = R"json({"devices":[
     {"id":"a","name":"Phone","type":"Smartphone","is_active":true,
@@ -474,6 +504,10 @@ void spotifyRequestEncodingProtectsQueryAndJsonBoundaries() {
             std::string("{\"context_uri\":\"spotify:playlist:abc\",\"offset\":{\"position\":17}}"));
   EXPECT_EQ(spotctl::playUrisBody({"spotify:track:a", "spotify:track:b"}),
             std::string("{\"uris\":[\"spotify:track:a\",\"spotify:track:b\"]}"));
+  // Enqueue carries the URI in the query string, so its colons must be escaped;
+  // sent raw, Spotify answers 400 and the track silently never queues.
+  EXPECT_EQ(spotctl::queueUriPath("spotify:track:4cOdK2wGLETKBW3PvgPWqQ"),
+            std::string("/me/player/queue?uri=spotify%3Atrack%3A4cOdK2wGLETKBW3PvgPWqQ"));
 }
 
 void bodylessWriteRequestsMustDeclareZeroContentLength() {
@@ -672,6 +706,7 @@ int main() {
   playbackParserHandlesTracksAndEpisodes();
   playlistParserAppliesOwnershipRestriction();
   trackParserSkipsUnavailableItemsAndKeepsPositions();
+  queueParserReadsUpcomingTracks();
   deviceAndErrorParsersHandleSparseResponses();
   spotifyRequestEncodingProtectsQueryAndJsonBoundaries();
   bodylessWriteRequestsMustDeclareZeroContentLength();

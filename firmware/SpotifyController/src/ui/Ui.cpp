@@ -158,15 +158,20 @@ void Ui::addChrome() {
   };
   const NavItem items[] = {{"Now Playing", nowPlayingEvent},
                            {"Library", libraryNavEvent},
+                           {"Queue", queueNavEvent},
                            {"Devices", deviceEvent},
                            {"Volume", volumeOpenEvent},
                            {"QR", qrNavEvent}};
-  for (size_t i = 0; i < 5; ++i) {
+  constexpr size_t kNavCount = sizeof(items) / sizeof(items[0]);
+  for (size_t i = 0; i < kNavCount; ++i) {
     lv_obj_t *button = makeButton(nav, items[i].label,
-                                  static_cast<lv_coord_t>(i * 202 + 4), 2,
-                                  194, 64, items[i].callback);
+                                  static_cast<lv_coord_t>(i * 170 + 2), 2,
+                                  162, 64, items[i].callback);
     lv_obj_set_style_radius(button, 12, 0);
-    if (i == 1 && (screen_ == Screen::Library || screen_ == Screen::Playlist)) {
+    const bool active =
+        (i == 1 && (screen_ == Screen::Library || screen_ == Screen::Playlist)) ||
+        (i == 2 && screen_ == Screen::Queue);
+    if (active) {
       lv_obj_set_style_bg_color(button, lv_color_hex(0x182A22), 0);
       lv_obj_set_style_text_color(button, lv_color_hex(0x1ED760), 0);
     }
@@ -649,6 +654,50 @@ void Ui::showTracks(const std::string &title) {
   rebuildTrackRows();
 }
 
+void Ui::showQueue() {
+  clear();
+  applyBaseStyle();
+  screen_ = Screen::Queue;
+  addChrome();
+  lv_obj_t *heading = lv_label_create(lv_scr_act());
+  lv_obj_set_pos(heading, 44, 86);
+  lv_obj_set_style_text_font(heading, &lv_font_montserrat_24, 0);
+  lv_label_set_text(heading, "Up next");
+  lv_obj_t *detail = lv_label_create(lv_scr_act());
+  lv_obj_set_pos(detail, 44, 120);
+  lv_obj_set_style_text_font(detail, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(detail, lv_color_hex(0xA6ABB2), 0);
+  lv_label_set_text(detail, "What Spotify plays after the current track");
+  list_ = lv_list_create(lv_scr_act());
+  lv_obj_set_pos(list_, 40, 160);
+  lv_obj_set_size(list_, 944, 352);
+  styleBrowseList(list_, false);
+  rebuildQueueRows();
+}
+
+// Queue rows are informational: Spotify exposes no way to jump to a specific
+// queue entry, only to skip forward, so these do not respond to a tap.
+void Ui::rebuildQueueRows() {
+  if (list_ == nullptr) {
+    return;
+  }
+  lv_obj_clean(list_);
+  if (queue_.empty()) {
+    lv_obj_t *empty = lv_label_create(list_);
+    lv_label_set_text(empty, "Nothing queued");
+    lv_obj_set_style_text_color(empty, lv_color_hex(0xA6ABB2), 0);
+    return;
+  }
+  for (const TrackSummary &track : queue_) {
+    const std::string duration =
+        track.duration_ms > 0 ? clockText(track.duration_ms) : "";
+    lv_obj_t *row =
+        makeBrowseRow(list_, track.title.c_str(), track.artists.c_str(),
+                      duration.c_str(), false, false);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
+  }
+}
+
 void Ui::showPlayOnly(const PlaylistSummary &playlist) {
   play_only_playlist_ = playlist;
   clear();
@@ -687,23 +736,28 @@ void Ui::rebuildTrackRows() {
   lv_obj_clean(list_);
   for (size_t index = 0; index < tracks_.size(); ++index) {
     const TrackSummary &track = tracks_[index];
-    std::string label = playback_.item.uri == track.uri ? "• " : "";
-    label += track.title;
-    if (!track.artists.empty()) {
-      label += "\n" + track.artists;
-    }
-    if (track.duration_ms > 0) {
-      label += "  ·  " + clockText(track.duration_ms);
-    }
-    lv_obj_t *row;
     const std::string duration = track.duration_ms > 0
                                      ? clockText(track.duration_ms)
                                      : "";
-    row = makeBrowseRow(list_, track.title.c_str(), track.artists.c_str(),
-                            duration.c_str(), false,
-                            playback_.item.uri == track.uri);
+    lv_obj_t *row = makeBrowseRow(list_, track.title.c_str(),
+                                  track.artists.c_str(), duration.c_str(),
+                                  false, playback_.item.uri == track.uri, true);
     lv_obj_set_user_data(row, reinterpret_cast<void *>(index + 1));
     lv_obj_add_event_cb(row, trackEvent, LV_EVENT_CLICKED, this);
+
+    // Tapping the row plays; this adds to the queue instead. It sits inside the
+    // row, so it takes the press before the row's own handler sees it.
+    lv_obj_t *enqueue = lv_btn_create(row);
+    lv_obj_set_size(enqueue, 64, 64);
+    lv_obj_align(enqueue, LV_ALIGN_RIGHT_MID, -8, 0);
+    lv_obj_set_style_radius(enqueue, 16, 0);
+    lv_obj_set_style_bg_color(enqueue, lv_color_hex(0x1F2A24), 0);
+    lv_obj_t *plus = lv_label_create(enqueue);
+    lv_label_set_text(plus, LV_SYMBOL_PLUS);
+    lv_obj_set_style_text_color(plus, lv_color_hex(0x1ED760), 0);
+    lv_obj_center(plus);
+    lv_obj_set_user_data(enqueue, reinterpret_cast<void *>(index + 1));
+    lv_obj_add_event_cb(enqueue, enqueueEvent, LV_EVENT_CLICKED, this);
   }
   lv_obj_scroll_to_y(list_, scroll_y, LV_ANIM_OFF);
   applyStoredThumbnails();
@@ -986,6 +1040,12 @@ void Ui::handle(const NetworkEvent &event) {
       rebuildPlaylistRows();
     }
     break;
+  case NetworkEventType::Queue:
+    queue_ = event.tracks;
+    if (screen_ == Screen::Queue) {
+      rebuildQueueRows();
+    }
+    break;
   case NetworkEventType::Tracks:
     if (event.replace) {
       tracks_.clear();
@@ -1172,7 +1232,7 @@ void Ui::backEvent(lv_event_t *event) {
     if (ui->playback_.has_item) {
       ui->showPlayer();
     } else {
-      ui->showSetup(ui->provisioning_screen_ ? "Connect USB to set up" : "Starting",
+      ui->showSetup(ui->provisioning_screen_ ? "Connect UART1 to set up" : "Starting",
                     ui->provisioning_screen_
                         ? "Run make provision after creating your Spotify app."
                         : "Connecting securely to Spotify...");
@@ -1307,6 +1367,27 @@ void Ui::nowPlayingEvent(lv_event_t *event) { self(event)->showPlayer(); }
 
 void Ui::libraryNavEvent(lv_event_t *event) {
   self(event)->showLibrary(true);
+}
+
+void Ui::queueNavEvent(lv_event_t *event) {
+  Ui *ui = self(event);
+  ui->noteInteraction();
+  ui->showQueue();
+  ui->send(UiCommand{UiCommandType::LoadQueue});
+}
+
+void Ui::enqueueEvent(lv_event_t *event) {
+  Ui *ui = self(event);
+  const size_t encoded = reinterpret_cast<size_t>(
+      lv_obj_get_user_data(lv_event_get_target(event)));
+  if (encoded == 0 || encoded - 1 >= ui->tracks_.size()) {
+    return;
+  }
+  UiCommand command{UiCommandType::EnqueueTrack};
+  command.uri = ui->tracks_[encoded - 1].uri;
+  if (ui->send(std::move(command))) {
+    ui->showMessage("Added to queue", false);
+  }
 }
 
 void Ui::qrNavEvent(lv_event_t *event) { self(event)->showQrCode(); }

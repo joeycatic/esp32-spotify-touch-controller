@@ -481,6 +481,19 @@ void NetworkService::process(const UiCommand &command) {
   case UiCommandType::TransferDevice:
     success = spotify_.transferPlayback(command.id, error);
     break;
+  case UiCommandType::LoadQueue: {
+    std::vector<TrackSummary> upcoming;
+    success = spotify_.getQueue(upcoming, error);
+    if (success) {
+      NetworkEvent event{NetworkEventType::Queue};
+      event.tracks = std::move(upcoming);
+      pushEvent(std::move(event));
+    }
+    break;
+  }
+  case UiCommandType::EnqueueTrack:
+    success = spotify_.enqueue(command.uri, error);
+    break;
   }
   if (!success) {
     publishFailure(error);

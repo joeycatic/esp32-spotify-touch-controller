@@ -51,14 +51,17 @@ inline void styleBrowseList(lv_obj_t *list, bool library) {
   lv_obj_set_style_width(list, 3, LV_PART_SCROLLBAR);
 }
 
+// reserve_action_slot moves the trailing label clear of a 64px button the
+// caller adds at the right edge, so the two never overlap.
 inline lv_obj_t *makeBrowseRow(lv_obj_t *list, const char *title,
-                                   const char *detail, const char *trailing,
-                                   bool library, bool highlighted = false) {
+                               const char *detail, const char *trailing,
+                               bool library, bool highlighted = false,
+                               bool reserve_action_slot = false) {
   static lv_style_t row_styles[2];
   static lv_style_t name_styles[2];
   static lv_style_t detail_styles[2];
   static lv_style_t icon_style;
-  static lv_style_t action_style;
+  static lv_style_t action_styles[2];
   static bool initialized = false;
   if (!initialized) {
     for (int i = 0; i < 2; ++i) {
@@ -87,11 +90,13 @@ inline lv_obj_t *makeBrowseRow(lv_obj_t *list, const char *title,
     lv_style_set_x(&icon_style, 16);
     lv_style_set_text_color(&icon_style, lv_color_hex(0x7F9188));
     lv_style_set_text_font(&icon_style, &lv_font_montserrat_24);
-    lv_style_init(&action_style);
-    lv_style_set_align(&action_style, LV_ALIGN_RIGHT_MID);
-    lv_style_set_x(&action_style, -20);
-    lv_style_set_text_font(&action_style, &lv_font_montserrat_14);
-    lv_style_set_text_color(&action_style, lv_color_hex(0x8AA493));
+    for (int i = 0; i < 2; ++i) {
+      lv_style_init(&action_styles[i]);
+      lv_style_set_align(&action_styles[i], LV_ALIGN_RIGHT_MID);
+      lv_style_set_x(&action_styles[i], i == 1 ? -88 : -20);
+      lv_style_set_text_font(&action_styles[i], &lv_font_montserrat_14);
+      lv_style_set_text_color(&action_styles[i], lv_color_hex(0x8AA493));
+    }
     initialized = true;
   }
   const int variant = library ? 1 : 0;
@@ -117,7 +122,7 @@ inline lv_obj_t *makeBrowseRow(lv_obj_t *list, const char *title,
   lv_label_set_text(subtitle, detail);
 
   lv_obj_t *action = lv_label_create(row);
-  lv_obj_add_style(action, &action_style, 0);
+  lv_obj_add_style(action, &action_styles[reserve_action_slot ? 1 : 0], 0);
   lv_label_set_text(action, trailing);
   return row;
 }

@@ -29,8 +29,6 @@ public:
   void showConnecting(const char *ssid);
   void showOnline();
   void showOffline();
-  void showFactoryResetCountdown(uint8_t seconds_remaining);
-  void showFactoryResetComplete();
   void showSetupSaved();
   UiAction pollAction();
 
@@ -60,13 +58,14 @@ private:
   static void nowPlayingEvent(lv_event_t *event);
   static void libraryNavEvent(lv_event_t *event);
   static void qrNavEvent(lv_event_t *event);
+  static void queueNavEvent(lv_event_t *event);
+  static void enqueueEvent(lv_event_t *event);
   static void factoryResetEvent(lv_event_t *event);
 
   void clear();
   void applyBaseStyle();
-  void addWideChrome();
-  void showWidePlayer();
-  void showWideSettings();
+  void addChrome();
+  void showSettings();
   lv_obj_t *makeButton(lv_obj_t *parent, const char *symbol, lv_coord_t x,
                        lv_coord_t y, lv_coord_t width, lv_coord_t height,
                        lv_event_cb_t callback);
@@ -78,6 +77,8 @@ private:
   void showLibrary(bool request_data);
   void requestPlaylists();
   void showTracks(const std::string &title);
+  void showQueue();
+  void rebuildQueueRows();
   void showPlayOnly(const PlaylistSummary &playlist);
   void showDevices();
   void showVolumeOverlay();
@@ -96,7 +97,6 @@ private:
   void rebuildTrackRows();
   void rebuildDeviceRows();
   void updatePlaybackWidgets();
-  void updateMiniPlayer();
   void animatePlayerSwipe(SwipeDirection direction);
   void showMessage(const std::string &message, bool error = false);
   void destroyMessage();
@@ -112,6 +112,7 @@ private:
   bool playlists_have_more_{false};
   bool tracks_have_more_{false};
   bool tracks_are_liked_{false};
+  std::vector<TrackSummary> queue_;
   std::string track_list_title_;
   PlaylistSummary play_only_playlist_;
   ArtworkHandle artwork_;
@@ -141,8 +142,6 @@ private:
   lv_obj_t *shuffle_button_{nullptr};
   lv_obj_t *repeat_button_{nullptr};
   lv_obj_t *list_{nullptr};
-  lv_obj_t *mini_title_{nullptr};
-  lv_obj_t *mini_play_label_{nullptr};
   lv_obj_t *message_label_{nullptr};
   lv_obj_t *connection_badge_{nullptr};
   lv_obj_t *calibration_target_{nullptr};

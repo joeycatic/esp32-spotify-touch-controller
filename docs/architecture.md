@@ -2,11 +2,11 @@
 
 ## Universal Board Startup
 
-One N16R8 firmware image supports two immutable runtime profiles. Before LVGL or any display bus starts, `BoardDetector` verifies the profile remembered in the separate `spotctl_hw` NVS namespace. If needed, it probes the 7B I²C bus on GPIO8/9 for both the Waveshare `0x24` expander protocol and GT911 product ID `911`, then probes the compact CST816 identity on GPIO48/47. No match or an ambiguous match selects no backend.
+One N16R8 firmware image targets one board. There is no runtime detection: `Wide7BBackend` brings up the 7B's I²C bus on GPIO8/9, the Waveshare `0x24` expander protocol and the GT911 directly. An earlier revision carried a second 240×320 profile and a `BoardDetector` that chose between them; both were removed after `552ef21`, together with the `spotctl_hw` NVS namespace that remembered the verified profile.
 
-`Board` is the application-facing facade. `Compact2Backend` preserves Arduino_GFX/ST7789, CST816, GPIO1 backlight, and 240×320 behavior. `Wide7BBackend` owns the 1024×600 ESP-IDF RGB panel, GT911, and Waveshare I/O expander. The expander driver is intentionally named by board rather than chip: Waveshare documentation calls it CH422G while the current schematic/example exposes a custom `0x24` register protocol.
+`Board` is the application-facing facade and owns a concrete `Wide7BBackend`, which drives the 1024×600 ESP-IDF RGB panel, GT911, and Waveshare I/O expander. The `BoardBackend` virtual interface was removed with the second board; with one implementation it only hid which panel the caller was talking to. The expander driver is intentionally named by board rather than chip: Waveshare documentation calls it CH422G while the current schematic/example exposes a custom `0x24` register protocol.
 
-Both serial transports start before detection. Compact uses native USB; 7B uses UART0 through its CH343-backed UART1 connector. Boot diagnostics go to both. Unknown hardware starts a headless UART0 provisioning/recovery loop instead of driving unverified display pins.
+The console is UART0 through the CH343-backed UART1 connector; the board's own USB port is shared with CAN and may not enumerate before firmware starts. Boot diagnostics go to both `Serial` and `Serial0`. A display that fails to initialize starts a headless UART0 provisioning/recovery loop.
 
 ## Runtime Flow
 
@@ -16,12 +16,12 @@ Now Playing is polled every two seconds while playing, every five seconds while 
 
 ## Memory
 
-- LVGL draw buffers are RGB565 and allocated from internal RAM first, PSRAM only as a degraded fallback that the boot log names. Compact uses two 40-row buffers, about 19 KB. The 7B uses one 16-row buffer, 32 KB: a second buffer buys nothing against a synchronous flush, and the pair must stay small enough to fit internal RAM beside the panel's bounce buffers. Rendering into PSRAM instead makes each flush a PSRAM-to-PSRAM copy on the same bus the panel's DMA is already saturating, which measured 14 MB/s against 54 MB/s from internal RAM.
+- LVGL draw buffers are RGB565 and allocated from internal RAM first, PSRAM only as a degraded fallback that the boot log names. One 16-row buffer, 32 KB: a second buffer buys nothing against a synchronous flush, and it must stay small enough to fit internal RAM beside the panel's bounce buffers. Rendering into PSRAM instead makes each flush a PSRAM-to-PSRAM copy on the same bus the panel's DMA is already saturating, which measured 14 MB/s against 54 MB/s from internal RAM.
 - The 7B RGB peripheral owns a 1,228,800-byte PSRAM framebuffer and Waveshare's two 10-row internal DMA bounce buffers for stable 30 MHz scanout. Enlarging those buffers is not a fix: the refill deadline is not the binding constraint, PSRAM read bandwidth is, and the larger buffers cost internal RAM the draw buffer and caches need. Firmware submits completed LVGL areas through the RGB driver, which in bounce-buffer mode copies line by line and deliberately skips the cache sync, because the refill ISR reads the framebuffer through the same cache. Sustaining that refill depends on SDK-level PSRAM clock and cache geometry that Arduino CLI's precompiled libraries fix; `firmware/idf` exists to rebuild them. LVGL retains a bounded 96 KB object heap in PSRAM because the native wide layout exceeds a smaller allocation during screen rebuilds; keeping that pool out of internal DRAM preserves a contiguous block for TLS.
 - Current artwork is downloaded into PSRAM and decoded into an immutable RGB565 frame. A reference-counted handle crosses the network/UI queue so LVGL can never draw from a frame that the other core has freed or reused.
 - Playback events are coalesced, limiting artwork ownership to the frame displayed by the UI and at most one pending replacement.
-- Player artwork is resampled once into an exact 184×184 compact or 400×400 wide RGB565 frame. Spotify's largest image URL is retained for the wide player.
-- Spotify API work closes any retained artwork connection before opening its TLS session. Row artwork remains disabled on compact. The 7B queues only visible 64×64 covers, fetches one per idle pass, uses a bounded LRU, and releases TLS after each batch.
+- Player artwork is resampled once into an exact 400×400 RGB565 frame. Spotify's largest image URL is retained.
+- Spotify API work closes any retained artwork connection before opening its TLS session. Row artwork queues only visible 64×64 covers, fetches one per idle pass, uses a bounded LRU, and releases TLS after each batch.
 - Artwork is never written to flash or a filesystem.
 - Playlist and track screens retain at most three 20-item pages.
 - Liked Songs playback sends no more than 50 locally loaded URIs.
@@ -50,6 +50,6 @@ Album artwork is center-cropped only if Spotify supplies a non-square image, the
 
 ## UI and Recovery
 
-The UI owns shared playback state and semantic callbacks. Compact retains the original portrait coordinates and single-column browse lists. Wide screens use a 64-pixel top bar, focused 400-pixel artwork/player split, minimum 64-pixel controls, and a persistent 72-pixel bottom navigation bar. On the 7B, Library uses two-column playlist cards with a separate Liked Songs action; playlist tracks use full-width rows with separate title, artist, duration, and current-track states. Shared static LVGL styles keep those repeated rows from allocating a new style for every item.
+The UI owns shared playback state and semantic callbacks. The screen uses a 64-pixel top bar, focused 400-pixel artwork/player split, minimum 64-pixel controls, and a persistent 72-pixel bottom navigation bar. On the 7B, Library uses two-column playlist cards with a separate Liked Songs action; playlist tracks use full-width rows with separate title, artist, duration, and current-track states. Shared static LVGL styles keep those repeated rows from allocating a new style for every item.
 
-Compact factory reset remains a ten-second BOOT hold. On 7B, BOOT is sampled before GPIO0 becomes RGB G3; a boot-time hold enters provisioning, while credential erasure requires holding the on-screen reset control for three seconds. Credential erasure clears `spotctl` but leaves the independently verified hardware hint in `spotctl_hw`.
+BOOT is sampled before GPIO0 becomes RGB G3; a boot-time hold enters provisioning, while credential erasure requires holding the on-screen reset control for three seconds. The ten-second BOOT-hold reset belonged to the removed 240×320 board and is gone. Credential erasure clears the `spotctl` namespace.

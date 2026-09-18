@@ -44,7 +44,7 @@ def _candidate(port: PortLike) -> Candidate | None:
     ):
         return Candidate(port.device, "7B UART1/CH343", 300, description)
     if port.vid == ESPRESSIF_VID:
-        return Candidate(port.device, "Espressif native USB", 200, description)
+        return Candidate(port.device, "7B native USB fallback", 200, description)
     return None
 
 
@@ -59,7 +59,6 @@ def resolve_port(ports: Iterable[PortLike], explicit: str | None = None) -> str:
             "7B: connect the UART1 / USB TO UART Type-C port with a data cable "
             "and route its DIP switch to ESP32.\n"
             "7B regular-USB fallback: hold BOOT while reconnecting USB.\n"
-            "2-inch: connect its regular USB data port.\n"
             "On macOS, confirm CH343 or Espressif appears in System Information > USB; "
             "install/update the Waveshare WCH driver if CH343 appears there without a "
             "serial port. Override detection with PORT=/dev/..."

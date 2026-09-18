@@ -14,6 +14,7 @@ enum class Screen {
   Player,
   Library,
   Playlist,
+  Queue,
   Devices,
   QrCode,
   FactoryReset,

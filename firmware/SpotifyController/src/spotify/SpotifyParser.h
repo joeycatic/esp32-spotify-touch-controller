@@ -25,6 +25,8 @@ bool parsePlaylistItems(const std::string &json, uint32_t page_offset,
                         SpotifyPage<TrackSummary> &page);
 bool parseSavedTracks(const std::string &json, uint32_t page_offset,
                       SpotifyPage<TrackSummary> &page);
+// /me/player/queue is not a page: it returns bare track objects and no cursor.
+bool parseQueue(const std::string &json, std::vector<TrackSummary> &upcoming);
 SpotifyError parseSpotifyError(int status, const std::string &json,
                                uint32_t retry_after_seconds = 0);
 SpotifyError parseOAuthTokenError(int status, const std::string &json,

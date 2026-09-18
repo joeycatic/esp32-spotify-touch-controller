@@ -18,10 +18,7 @@ spotctl::DeviceConfig device_config;
 bool provisioning_mode = false;
 bool wifi_was_connected = false;
 bool configured_before_setup = false;
-bool factory_reset_complete = false;
 bool display_available = false;
-uint32_t boot_hold_started_ms = 0;
-uint8_t last_reset_countdown = 255;
 
 void setup() {
   Serial.begin(115200);
@@ -30,17 +27,12 @@ void setup() {
 
   display_available = board.begin();
   configured_before_setup = config_store.load(device_config);
-  const bool boot_held = board.bootButtonHeld();
-  provisioning_mode = !display_available || !configured_before_setup || boot_held;
-  if (boot_held && configured_before_setup) {
-    boot_hold_started_ms = millis();
-  }
+  provisioning_mode = !display_available || !configured_before_setup ||
+                      board.bootButtonHeld();
 
   if (!display_available) {
     const char *recovery =
-        board.profile() == spotctl::BoardProfile::Compact2
-            ? "[recovery] Display unavailable; provisioning is active on native USB"
-            : "[recovery] Hardware unavailable; provisioning is active on UART0";
+        "[recovery] Hardware unavailable; provisioning is active on UART0";
     Serial.println(recovery);
     Serial0.println(recovery);
     provisioner.begin(board.primarySerial());
@@ -67,27 +59,6 @@ void loop() {
     }
   }
   if (provisioning_mode) {
-    if (display_available &&
-        board.capabilities().factory_reset ==
-            spotctl::FactoryResetPolicy::BootHold10Seconds &&
-        configured_before_setup && !factory_reset_complete &&
-        boot_hold_started_ms != 0 && board.bootButtonHeld()) {
-      const uint32_t held_ms = millis() - boot_hold_started_ms;
-      if (held_ms >= 3000 && held_ms < 10000) {
-        const uint8_t remaining =
-            static_cast<uint8_t>((10000U - held_ms + 999U) / 1000U);
-        if (remaining != last_reset_countdown) {
-          last_reset_countdown = remaining;
-          ui.showFactoryResetCountdown(remaining);
-        }
-      } else if (held_ms >= 10000) {
-        config_store.erase();
-        factory_reset_complete = true;
-        ui.showFactoryResetComplete();
-      }
-    } else if (!board.bootButtonHeld()) {
-      boot_hold_started_ms = 0;
-    }
     if (provisioner.poll()) {
       if (display_available) {
         ui.showSetupSaved();

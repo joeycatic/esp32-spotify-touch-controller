@@ -17,6 +17,9 @@ std::string urlEncode(const std::string &value);
 std::string playContextBody(const std::string &context_uri,
                             uint32_t position);
 std::string playUrisBody(const std::vector<std::string> &uris);
+// Enqueue passes the track URI in the query string, where its colons must be
+// percent-encoded.
+std::string queueUriPath(const std::string &uri);
 
 } // namespace spotctl
 

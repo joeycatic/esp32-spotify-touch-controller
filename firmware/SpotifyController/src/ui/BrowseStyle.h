@@ -35,30 +35,33 @@ inline void styleBrowseRow(lv_obj_t *row, bool highlighted = false) {
   lv_obj_add_style(row, &pressed, LV_STATE_PRESSED);
 }
 
-inline void styleBrowseList(lv_obj_t *list, bool wide, bool library) {
+inline void styleBrowseList(lv_obj_t *list, bool library) {
   lv_obj_set_style_bg_color(list, lv_color_hex(0x080A0C), 0);
   lv_obj_set_style_border_width(list, 0, 0);
   lv_obj_set_style_radius(list, 0, 0);
-  lv_obj_set_style_pad_all(list, wide ? 4 : 2, 0);
-  lv_obj_set_style_pad_right(list, wide ? 12 : 2, 0);
-  lv_obj_set_style_pad_row(list, wide ? 12 : 6, 0);
+  lv_obj_set_style_pad_all(list, 4, 0);
+  lv_obj_set_style_pad_right(list, 12, 0);
+  lv_obj_set_style_pad_row(list, 12, 0);
   lv_obj_set_style_pad_column(list, 16, 0);
-  lv_obj_set_flex_flow(list, wide && library ? LV_FLEX_FLOW_ROW_WRAP
-                                            : LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_flow(list, library ? LV_FLEX_FLOW_ROW_WRAP
+                                     : LV_FLEX_FLOW_COLUMN);
   lv_obj_set_scroll_dir(list, LV_DIR_VER);
   lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_AUTO);
   lv_obj_set_style_bg_color(list, lv_color_hex(0x52605A), LV_PART_SCROLLBAR);
   lv_obj_set_style_width(list, 3, LV_PART_SCROLLBAR);
 }
 
-inline lv_obj_t *makeWideBrowseRow(lv_obj_t *list, const char *title,
-                                   const char *detail, const char *trailing,
-                                   bool library, bool highlighted = false) {
+// reserve_action_slot moves the trailing label clear of a 64px button the
+// caller adds at the right edge, so the two never overlap.
+inline lv_obj_t *makeBrowseRow(lv_obj_t *list, const char *title,
+                               const char *detail, const char *trailing,
+                               bool library, bool highlighted = false,
+                               bool reserve_action_slot = false) {
   static lv_style_t row_styles[2];
   static lv_style_t name_styles[2];
   static lv_style_t detail_styles[2];
   static lv_style_t icon_style;
-  static lv_style_t action_style;
+  static lv_style_t action_styles[2];
   static bool initialized = false;
   if (!initialized) {
     for (int i = 0; i < 2; ++i) {
@@ -87,11 +90,13 @@ inline lv_obj_t *makeWideBrowseRow(lv_obj_t *list, const char *title,
     lv_style_set_x(&icon_style, 16);
     lv_style_set_text_color(&icon_style, lv_color_hex(0x7F9188));
     lv_style_set_text_font(&icon_style, &lv_font_montserrat_24);
-    lv_style_init(&action_style);
-    lv_style_set_align(&action_style, LV_ALIGN_RIGHT_MID);
-    lv_style_set_x(&action_style, -20);
-    lv_style_set_text_font(&action_style, &lv_font_montserrat_14);
-    lv_style_set_text_color(&action_style, lv_color_hex(0x8AA493));
+    for (int i = 0; i < 2; ++i) {
+      lv_style_init(&action_styles[i]);
+      lv_style_set_align(&action_styles[i], LV_ALIGN_RIGHT_MID);
+      lv_style_set_x(&action_styles[i], i == 1 ? -88 : -20);
+      lv_style_set_text_font(&action_styles[i], &lv_font_montserrat_14);
+      lv_style_set_text_color(&action_styles[i], lv_color_hex(0x8AA493));
+    }
     initialized = true;
   }
   const int variant = library ? 1 : 0;
@@ -117,7 +122,7 @@ inline lv_obj_t *makeWideBrowseRow(lv_obj_t *list, const char *title,
   lv_label_set_text(subtitle, detail);
 
   lv_obj_t *action = lv_label_create(row);
-  lv_obj_add_style(action, &action_style, 0);
+  lv_obj_add_style(action, &action_styles[reserve_action_slot ? 1 : 0], 0);
   lv_label_set_text(action, trailing);
   return row;
 }

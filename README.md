@@ -3,48 +3,44 @@
 [![CI](https://github.com/joeycatic/esp32-spotify-touch-controller/actions/workflows/ci.yml/badge.svg)](https://github.com/joeycatic/esp32-spotify-touch-controller/actions/workflows/ci.yml)
 
 > [!WARNING]
-> `v1.0.0-rc.3` is a release candidate. Automated tests and the universal firmware build pass. Physical 7B and post-refactor 2-inch validation are tracked in the [hardware checklist](docs/hardware-checklist.md).
+> `v1.0.0-rc.3` is a release candidate. Automated tests and the firmware build pass. Physical 7B validation is tracked in the [hardware checklist](docs/hardware-checklist.md).
 
-A standalone Spotify display and touchscreen remote for the Waveshare ESP32-S3-Touch-LCD-2 and ESP32-S3-Touch-LCD-7B (SKU 31726). One firmware image detects either board before initializing its display. After one-time serial setup, the controller connects directly to Wi-Fi and Spotify. No computer, cloud relay, or Raspberry Pi needs to remain running.
+A standalone Spotify display and touchscreen remote for the Waveshare ESP32-S3-Touch-LCD-7B (SKU 31726). After one-time serial setup, the controller connects directly to Wi-Fi and Spotify. No computer, cloud relay, or Raspberry Pi needs to remain running.
 
 The ESP32 controls Spotify playback on another Spotify Connect device. It does not play audio itself.
 
 ## Project Status
 
-Universal-board support is implemented. Physical-device validation is in progress; see the [hardware acceptance checklist](docs/hardware-checklist.md) for the exact tests that remain.
+This firmware targets the 7B only. Support for the 240×320 ESP32-S3-Touch-LCD-2 was removed along with the board-detection layer; the last revision carrying it is `552ef21`. Physical-device validation is in progress; see the [hardware acceptance checklist](docs/hardware-checklist.md) for the exact tests that remain.
 
 The 7B needs the separate [source-built ESP-IDF target](firmware/idf/README.md) for a stable display. Arduino CLI's precompiled SDK fixes the PSRAM clock and cache geometry that the RGB panel's DMA depends on, and no sketch-level change reaches them. On hardware this raised idle LVGL flush throughput from 14 MB/s to 54 MB/s and cut time spent in flush per five-second window from 83 ms to 22 ms. Flicker under Spotify load is not yet verified; see the [hardware checklist](docs/hardware-checklist.md).
 
 ## Features
 
-- Native cover-first interfaces for 240×320 portrait and 1024×600 landscape displays
-- Conservative automatic board detection with remembered-profile verification
+- Cover-first interface built for the 1024×600 landscape display
 - Play/pause, previous, next, seek, volume, shuffle, and repeat
 - Spotify Connect output-device picker and playback transfer
+- Up-next queue view, and add-to-queue from any playlist or Liked Songs row
 - Prefetched playlist and song browsing with cached 20-item pagination
 - Liked Songs browsing and selection
 - Play-only handling for followed playlists whose items Spotify hides
-- Swipe-up library, horizontal track swipes, animated controls, mini-player, and Open-in-Spotify QR code
+- Swipe-up library, horizontal track swipes, animated controls, and Open-in-Spotify QR code
 - One-time browser PKCE authorization over USB serial; no client secret
 - Automatic access-token refresh and rotated refresh-token storage
 - Validated HTTPS, rate-limit handling, offline recovery, and bounded backoff
-- Four-corner touch diagnostics and board-appropriate factory-reset recovery
+- Four-corner touch diagnostics and on-screen factory-reset recovery
 
 ## Quick Start
 
 Requirements: Linux, macOS, or WSL with Python 3, `curl`, `tar`, `git`, `g++`, and a USB-C data cable.
 
-Connector choice matters:
-
-- **7B:** connect the port labeled **UART1 / USB TO UART** and route its DIP switch to the ESP32.
-- **2-inch:** connect the regular USB data port.
-- The 7B regular USB port is shared with CAN and may not enumerate before firmware starts.
+Connector choice matters: connect the port labeled **UART1 / USB TO UART** and route its DIP switch to the ESP32. The regular USB port is shared with CAN and may not enumerate before firmware starts.
 
 ```bash
 make bootstrap
 make test
-make build
-make flash
+make build-idf
+ALLOW_NO_BACKUP=1 make flash-idf
 ```
 
 Create a Spotify developer application, add this exact redirect URI, and then run provisioning:
@@ -66,13 +62,22 @@ Detailed instructions are in [docs/setup.md](docs/setup.md). Architecture and se
 ```bash
 make bootstrap                         # Install pinned tools under this repository
 make test                              # Native C++ and Python tests
-make build                             # Compile the ESP32 firmware
-make flash                             # Build and upload to the detected board
-PORT=/dev/cu.usbserial-DEVICE make flash # Upload using an explicit serial port
+make build-idf                         # Compile the source-built firmware (use this)
+make flash-idf                         # Upload the source-built firmware
+make build                             # Arduino-CLI build; flickers under load, see below
+make flash                             # Build and upload the Arduino-CLI image
+PORT=/dev/ttyUSB0 make flash-idf       # Upload using an explicit serial port
 make monitor                           # Sanitized 115200-baud serial monitor
 make provision                         # Interactive one-time setup
-PORT=/dev/cu.usbserial-DEVICE make provision
+PORT=/dev/ttyUSB0 make provision
 ```
+
+`make build-idf` and `make flash-idf` are the ones to use. `firmware/idf` rebuilds the
+SDK with the vendor memory profile the RGB panel depends on; the Arduino-CLI image in
+`make build` is kept because it compiles far faster, but its precompiled SDK is exactly
+what makes the panel tear under load. `scripts/flash-idf.sh` refuses to flash without a
+verified recovery backup unless `ALLOW_NO_BACKUP=1` is set; Windows uses the matching
+`scripts/*.ps1`.
 
 ## Important Limits
 

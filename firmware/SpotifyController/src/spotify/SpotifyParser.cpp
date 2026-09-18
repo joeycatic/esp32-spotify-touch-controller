@@ -271,6 +271,23 @@ bool parseSavedTracks(const std::string &json, uint32_t page_offset,
   return parseTrackPage(json, page_offset, true, page);
 }
 
+bool parseQueue(const std::string &json, std::vector<TrackSummary> &upcoming) {
+  JsonDocument document;
+  if (deserializeJson(document, json)) {
+    return false;
+  }
+  upcoming.clear();
+  uint32_t index = 0;
+  for (JsonObjectConst item : document["queue"].as<JsonArrayConst>()) {
+    TrackSummary track;
+    if (parseTrackObject(item, index, track)) {
+      upcoming.push_back(std::move(track));
+    }
+    ++index;
+  }
+  return true;
+}
+
 SpotifyError parseSpotifyError(int status, const std::string &json,
                                uint32_t retry_after_seconds) {
   SpotifyError result;

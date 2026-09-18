@@ -26,6 +26,8 @@ public:
   }
 
   bool begin(TwoWire &wire);
+  // Drive one LCD reset edge, leaving VCOM and every other output untouched.
+  bool pulseLcdReset();
   bool set(Pin pin, bool high);
   bool setBacklight(uint8_t percent);
 

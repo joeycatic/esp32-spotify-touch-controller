@@ -66,5 +66,9 @@ std::string playUrisBody(const std::vector<std::string> &uris) {
   return result;
 }
 
+std::string queueUriPath(const std::string &uri) {
+  return "/me/player/queue?uri=" + urlEncode(uri);
+}
+
 } // namespace spotctl
 

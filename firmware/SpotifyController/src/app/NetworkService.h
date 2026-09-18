@@ -50,7 +50,7 @@ private:
   ConfigStore &store_;
   SpotifyClient spotify_;
   ArtworkManager artwork_;
-  MediaPolicy media_{capabilitiesFor(BoardProfile::Compact2).media};
+  MediaPolicy media_{kBoardCapabilities.media};
   DeviceConfig config_;
   SemaphoreHandle_t mutex_{nullptr};
   std::deque<UiCommand> commands_;

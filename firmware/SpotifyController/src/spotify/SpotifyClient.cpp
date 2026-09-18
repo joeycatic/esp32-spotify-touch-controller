@@ -275,6 +275,24 @@ bool SpotifyClient::getSavedTracks(uint32_t offset,
   return true;
 }
 
+bool SpotifyClient::getQueue(std::vector<TrackSummary> &upcoming,
+                             SpotifyError &error) {
+  HttpResponse response;
+  if (!apiRequest("GET", "/me/player/queue", {}, response, error)) {
+    return false;
+  }
+  if (!parseQueue(response.body, upcoming)) {
+    error = parseSpotifyError(0, "");
+    error.user_message = "Spotify queue response could not be read";
+    return false;
+  }
+  return true;
+}
+
+bool SpotifyClient::enqueue(const std::string &uri, SpotifyError &error) {
+  return command("POST", queueUriPath(uri), {}, error);
+}
+
 bool SpotifyClient::resume(SpotifyError &error) {
   return command("PUT", "/me/player/play", {}, error);
 }

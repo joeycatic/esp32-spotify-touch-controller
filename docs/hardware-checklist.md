@@ -405,10 +405,67 @@ then judge. Record the `[board] LVGL draw buffer: ... internal RAM` line and the
 five-second `[7B] flush ... KB/s` figure on every run -- a change that does not
 move those numbers did not change what it claimed to change.
 
+2026-09-17: flashed the source-built target at `552ef21` on Linux and
+identified a regression in that same commit.
+
+`make build-idf` / `make flash-idf` now exist as POSIX equivalents of the
+PowerShell scripts, so this no longer needs Windows. The flash wrote bootloader,
+partition table, otadata and app; bootloader, partitions and app all passed an
+independent `verify-flash` digest check. otadata legitimately does not match
+`ota_data_initial.bin` afterwards, because the application writes its own
+`seq=1` entry claiming app0 on first boot. The boot log confirmed the vendor
+memory profile, 7B detection, GT911, RGB init, first flush, backlight on, and
+idle flush throughput of 46-58 MB/s. NVS survived, so Wi-Fi and the Spotify
+refresh token were preserved.
+
+**The display was blank after that flash.** The board had been running a
+different project's firmware (`ai-dashboard`) with a working picture minutes
+earlier, so the panel, ribbon and backlight are sound. The panel showed no glow.
+
+`552ef21` removed the panel-rail power cycle added by `094b958` and did not
+restore the `LcdReset` pulse that predated it. Compare the expander writes:
+
+| | before `552ef21` | at `552ef21` |
+| --- | --- | --- |
+| detector output write | `0xD1`, LcdReset low | `0xD9`, LcdReset high |
+| backend startup write | `0xD1`, LcdReset low | `0xD9`, LcdReset high |
+| explicit reset edge | `LcdReset` false then true | none |
+
+After `552ef21`, `LcdReset` goes high on the first expander write and never
+changes again; `grep -rn LcdReset` finds it only in the enum. The panel receives
+no reset edge of any kind. That predicts exactly the observed behaviour: correct
+from a genuine cold power-on, black after the warm reset that ends every flash,
+which is the case Waveshare's FAQ answers with "disconnect and reconnect power".
+
+This matches the vendor demo, which also never drives IO3 or IO6 -- but the
+vendor demo is not reached through a warm reset with the expander's outputs
+already latched.
+
+**Confirmed, both directions.** A full ten-second power disconnect brought the
+picture back on the unchanged binary, which isolates the fault to the warm-reset
+path rather than to anything about the build. `WaveshareIoExpander7B::pulseLcdReset()`
+then restored a single low/high edge on EXIO3 -- 20 ms asserted, 120 ms to let the
+panel run its own initialization -- while VCOM stays high and the panel rail is
+never dropped. With that in place the display came up **through a flash-ending
+warm reset, with no power cycle**, and the user reports it working.
+
+So `552ef21` was right that dropping the rail fights the panel's power-on
+sequence, and wrong to conclude the panel needs no reset stimulus at all. Both
+statements now hold: the rail stays up, and the panel still gets an edge.
+
+The bring-up order remains a difference from the vendor and remains untested:
+Waveshare initializes the RGB panel *before* the expander and touch, this
+firmware does the reverse. It is no longer a suspect for this defect.
+
+Not yet explained, and unchanged by any of this: the idle repaint rate. The
+first flush report after boot was 2400 KB in a five-second window, about two
+full screens, with nothing playing.
+
 ### Bring-up and provisioning
 
 - [x] UART1 / USB TO UART enumerates through the onboard CH343 and `make flash-idf` selects it.
 - [x] Upload and flash verification complete without manually specifying `PORT`.
+- [x] Display survives a warm reset without a power cycle (2026-09-17, after the `pulseLcdReset()` fix).
 - [ ] Display is 1024×600 landscape with correct colors, no drift/flicker/tearing, and stable backlight.
 - [ ] Serial boot log reports `RGB timing: 30 MHz pixel clock, 10-line bounce buffers`. Check the setup screen before Wi-Fi, then leave Now Playing untouched for five minutes with Spotify connected; neither should develop shifted lines or flicker.
 - [ ] Boot log reports `[board] LVGL draw buffer: 1024 x 16 rows, 1 buffer(s), internal RAM`. `PSRAM (degraded)` means the internal allocation failed and the throughput fix is not in effect.

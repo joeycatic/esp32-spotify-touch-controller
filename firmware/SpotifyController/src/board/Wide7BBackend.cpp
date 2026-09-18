@@ -34,6 +34,13 @@ bool Wide7BBackend::begin() {
   }
   log7B("I/O expander ready; LCD reset and VCOM high, backlight low");
 
+  // Must happen on every start, not just a cold one: see pulseLcdReset().
+  if (!expander_.pulseLcdReset()) {
+    log7B("LCD reset pulse failed");
+    return false;
+  }
+  log7B("LCD reset pulsed; VCOM held high throughout");
+
   pinMode(4, OUTPUT);
   digitalWrite(4, LOW);
   expander_.set(WaveshareIoExpander7B::TouchReset, false);

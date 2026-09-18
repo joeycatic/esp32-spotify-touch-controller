@@ -91,6 +91,29 @@ void displayStartupPreservesLcdResetAndVcom() {
             std::vector<uint8_t>({0x03, 0xDB}));
 }
 
+// A startup mask that already holds LCD reset high never disturbs a panel that
+// survived a warm reset with the expander's outputs latched, so the panel keeps
+// its stale state and shows nothing. One reset edge cold-starts it without
+// dropping the rail.
+void displayStartupPulsesLcdReset() {
+  TwoWire wire;
+  spotctl::WaveshareIoExpander7B expander;
+
+  EXPECT_TRUE(expander.begin(wire));
+  EXPECT_TRUE(expander.pulseLcdReset());
+  EXPECT_EQ(wire.transmissions.size(), static_cast<size_t>(4));
+  if (wire.transmissions.size() != 4) {
+    return;
+  }
+
+  // Asserted: bit 3 clears, everything else in the startup mask holds.
+  EXPECT_EQ(wire.transmissions[2].bytes,
+            std::vector<uint8_t>({0x03, 0xD1}));
+  // Released: back to the startup mask, which is the rising edge the panel needs.
+  EXPECT_EQ(wire.transmissions[3].bytes,
+            std::vector<uint8_t>({0x03, 0xD9}));
+}
+
 void layoutStaysInsideTheDisplay() {
   const auto layout = spotctl::kUiLayout;
   EXPECT_EQ(layout.width, static_cast<uint16_t>(1024));
@@ -629,6 +652,7 @@ void unexplainedFailuresNameTheStatusTheyGotBack() {
 int main() {
   boardCapabilitiesAreImmutable();
   displayStartupPreservesLcdResetAndVcom();
+  displayStartupPulsesLcdReset();
   layoutStaysInsideTheDisplay();
   pollIntervalTracksPlaybackState();
   progressInterpolationClampsToDuration();

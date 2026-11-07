@@ -59,6 +59,7 @@ private:
   static void libraryNavEvent(lv_event_t *event);
   static void qrNavEvent(lv_event_t *event);
   static void queueNavEvent(lv_event_t *event);
+  static void saveEvent(lv_event_t *event);
   static void enqueueEvent(lv_event_t *event);
   static void factoryResetEvent(lv_event_t *event);
 
@@ -147,6 +148,7 @@ private:
   lv_obj_t *calibration_target_{nullptr};
   lv_obj_t *calibration_label_{nullptr};
   lv_obj_t *factory_reset_button_{nullptr};
+  lv_obj_t *saved_button_{nullptr};
 };
 
 } // namespace spotctl

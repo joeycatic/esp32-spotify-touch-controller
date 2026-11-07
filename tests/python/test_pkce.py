@@ -38,6 +38,7 @@ class PkceTests(unittest.TestCase):
                 "playlist-read-private",
                 "playlist-read-collaborative",
                 "user-library-read",
+                "user-library-modify",
             },
         )
 

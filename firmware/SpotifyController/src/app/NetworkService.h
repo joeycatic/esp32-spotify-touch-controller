@@ -51,6 +51,8 @@ private:
   SpotifyClient spotify_;
   ArtworkManager artwork_;
   MediaPolicy media_{kBoardCapabilities.media};
+  std::string saved_uri_;
+  bool saved_state_{false};
   DeviceConfig config_;
   SemaphoreHandle_t mutex_{nullptr};
   std::deque<UiCommand> commands_;

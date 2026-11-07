@@ -1,5 +1,7 @@
 #include "Ui.h"
 
+#include "../spotify/SpotifyRequest.h"
+
 #include <algorithm>
 #include <cstdio>
 
@@ -85,6 +87,7 @@ void Ui::clear() {
   calibration_target_ = nullptr;
   calibration_label_ = nullptr;
   factory_reset_button_ = nullptr;
+  saved_button_ = nullptr;
   factory_reset_pressed_ = false;
   factory_reset_started_ms_ = 0;
 }
@@ -355,7 +358,7 @@ void Ui::showPlayer() {
 
   title_label_ = lv_label_create(lv_scr_act());
   lv_obj_set_pos(title_label_, 500, 105);
-  lv_obj_set_width(title_label_, 470);
+  lv_obj_set_width(title_label_, 400);
   lv_label_set_long_mode(title_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
   lv_obj_set_style_text_font(title_label_, &lv_font_montserrat_24, 0);
   subtitle_label_ = lv_label_create(lv_scr_act());
@@ -379,6 +382,13 @@ void Ui::showPlayer() {
     lv_obj_set_style_text_color(label, lv_color_hex(0x858B94), 0);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
   }
+
+  // Beside the title, not in the transport row: this acts on the song, not on
+  // playback. LVGL's built-in font has no heart, so saved state is carried by
+  // colour on a check mark.
+  saved_button_ =
+      makeButton(lv_scr_act(), LV_SYMBOL_OK, 920, 96, 72, 72, saveEvent);
+  lv_obj_set_style_bg_opa(saved_button_, LV_OPA_TRANSP, 0);
 
   shuffle_button_ = makeButton(lv_scr_act(), LV_SYMBOL_SHUFFLE, 500, 305, 72,
                                72, shuffleEvent);
@@ -911,6 +921,20 @@ void Ui::updatePlaybackWidgets() {
                                 playback_.shuffle ? lv_color_hex(0x1ED760)
                                                   : lv_color_hex(0xF7F7F7),
                                 0);
+    if (saved_button_ != nullptr) {
+      // Local files have no library identity; tracks and episodes both do.
+      const bool savable =
+          playback_.has_item && !librarySavableUri(playback_.item.uri).empty();
+      if (savable) {
+        lv_obj_clear_flag(saved_button_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_text_color(saved_button_,
+                                    playback_.saved ? lv_color_hex(0x1ED760)
+                                                    : lv_color_hex(0x8A9098),
+                                    0);
+      } else {
+        lv_obj_add_flag(saved_button_, LV_OBJ_FLAG_HIDDEN);
+      }
+    }
     lv_obj_set_style_text_color(repeat_button_,
                                 playback_.repeat != RepeatMode::Off
                                     ? lv_color_hex(0x1ED760)
@@ -1039,6 +1063,13 @@ void Ui::handle(const NetworkEvent &event) {
     if (screen_ == Screen::Library) {
       rebuildPlaylistRows();
     }
+    break;
+  case NetworkEventType::SavedState:
+    playback_.saved = event.liked;
+    updatePlaybackWidgets();
+    showMessage(event.liked ? "Saved to your library"
+                            : "Removed from your library",
+                false);
     break;
   case NetworkEventType::Queue:
     queue_ = event.tracks;
@@ -1367,6 +1398,14 @@ void Ui::nowPlayingEvent(lv_event_t *event) { self(event)->showPlayer(); }
 
 void Ui::libraryNavEvent(lv_event_t *event) {
   self(event)->showLibrary(true);
+}
+
+void Ui::saveEvent(lv_event_t *event) {
+  Ui *ui = self(event);
+  if (!ui->playback_.has_item) {
+    return;
+  }
+  ui->send(UiCommand{UiCommandType::ToggleSaveTrack});
 }
 
 void Ui::queueNavEvent(lv_event_t *event) {

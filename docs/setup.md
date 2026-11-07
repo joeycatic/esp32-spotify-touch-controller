@@ -125,6 +125,7 @@ Controls:
 - Tap the device name: output-device picker.
 - Tap the volume icon: volume slider.
 - Drag the progress bar and release: seek.
+- Use the checkmark beside the track title to save it to or remove it from your Spotify library. This control is available for tracks and episodes, not local files.
 - Tap SPOTIFY: show a QR link for the current item.
 - Swipe down or use the back arrow: return.
 
@@ -133,6 +134,7 @@ On the 7B, the bottom navigation provides Now Playing, Library, Devices, Volume,
 ## Reprovisioning and Recovery
 
 - Change Wi-Fi or renew authorization: reset while holding BOOT, then run `make provision`. BOOT is sampled only at startup because GPIO0 becomes an RGB display signal.
+- Grant the library-save permission to an existing installation: reset while holding BOOT, then run `make provision` again. The authorization now includes `user-library-modify`; enter the Client ID and Wi-Fi details when prompted.
 - Factory reset: open the gear screen and hold **Reset setup** for three seconds. Releasing early cancels it.
 - Revoke access remotely: remove the application under the Spotify account’s connected-app settings. The controller will request USB authorization again after refresh fails.
 

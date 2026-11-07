@@ -20,6 +20,13 @@ std::string playUrisBody(const std::vector<std::string> &uris);
 // Enqueue passes the track URI in the query string, where its colons must be
 // percent-encoded.
 std::string queueUriPath(const std::string &uri);
+// The URI itself when it names something /me/library accepts, empty otherwise.
+// Local files have no library identity and are rejected.
+std::string librarySavableUri(const std::string &uri);
+// February 2026 replaced the entity-specific saved-items endpoints with these
+// two, which address items by URI in the query string.
+std::string libraryContainsPath(const std::string &uri);
+std::string libraryItemsPath(const std::string &uri);
 
 } // namespace spotctl
 

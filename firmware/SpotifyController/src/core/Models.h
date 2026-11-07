@@ -32,6 +32,8 @@ struct PlaybackDevice {
 struct PlaybackSnapshot {
   bool has_item{false};
   MediaItem item;
+  // From /me/library/contains, not the playback response.
+  bool saved{false};
   bool is_playing{false};
   uint32_t progress_ms{0};
   uint32_t observed_at_ms{0};

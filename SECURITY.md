@@ -2,7 +2,10 @@
 
 ## Supported versions
 
-Only the latest tagged release receives security fixes. The current `v1.0.0-rc.2` release is a prerelease; unreleased universal-board changes have not completed physical validation.
+Only the latest tagged release receives security fixes. The latest tagged
+release is `v1.0.0-rc.3`, a prerelease. The unreleased branch targets the
+ESP32-S3-Touch-LCD-7B only and still has physical acceptance checks pending;
+see `docs/hardware-checklist.md`.
 
 ## Reporting a vulnerability
 

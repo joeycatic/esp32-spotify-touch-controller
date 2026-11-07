@@ -293,6 +293,27 @@ bool SpotifyClient::enqueue(const std::string &uri, SpotifyError &error) {
   return command("POST", queueUriPath(uri), {}, error);
 }
 
+bool SpotifyClient::getLibraryContains(const std::string &uri, bool &saved,
+                                       SpotifyError &error) {
+  HttpResponse response;
+  if (!apiRequest("GET", libraryContainsPath(uri), {}, response, error)) {
+    return false;
+  }
+  if (!parseLibraryContains(response.body, saved)) {
+    error = parseSpotifyError(0, "");
+    error.user_message = "Spotify library response could not be read";
+    return false;
+  }
+  return true;
+}
+
+bool SpotifyClient::setLibrarySaved(const std::string &uri, bool saved,
+                                    SpotifyError &error) {
+  // Both the save and the remove carry their URIs in the query string and no
+  // body, so command()'s zero Content-Length framing applies.
+  return command(saved ? "PUT" : "DELETE", libraryItemsPath(uri), {}, error);
+}
+
 bool SpotifyClient::resume(SpotifyError &error) {
   return command("PUT", "/me/player/play", {}, error);
 }

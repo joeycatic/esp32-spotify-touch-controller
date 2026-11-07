@@ -288,6 +288,20 @@ bool parseQueue(const std::string &json, std::vector<TrackSummary> &upcoming) {
   return true;
 }
 
+bool parseLibraryContains(const std::string &json, bool &saved) {
+  saved = false;
+  JsonDocument document;
+  if (deserializeJson(document, json)) {
+    return false;
+  }
+  JsonArrayConst answers = document.as<JsonArrayConst>();
+  if (answers.isNull() || answers.size() == 0) {
+    return false;
+  }
+  saved = answers[0].as<bool>();
+  return true;
+}
+
 SpotifyError parseSpotifyError(int status, const std::string &json,
                                uint32_t retry_after_seconds) {
   SpotifyError result;

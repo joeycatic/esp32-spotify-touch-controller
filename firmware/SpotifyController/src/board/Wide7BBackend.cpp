@@ -23,8 +23,9 @@ void log7BError(const char *stage, esp_err_t error) {
 
 bool Wide7BBackend::begin() {
 #ifdef SPOTCTL_VENDOR_MEMORY_PROFILE
-  log7B("source-built SDK: 120 MHz PSRAM (temp-tracked), 64 KB data cache, "
-        "64-byte lines, 32 KB instruction cache, PSRAM code/rodata");
+  log7B("source-built SDK: 120 MHz PSRAM (boot-tuned; no temperature retuning), "
+        "64 KB data cache, 64-byte lines, 32 KB instruction cache, "
+        "PSRAM code/rodata");
 #endif
   Wire.end();
   Wire.begin(8, 9, 400000);

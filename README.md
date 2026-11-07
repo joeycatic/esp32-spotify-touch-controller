@@ -21,6 +21,7 @@ The 7B needs the separate [source-built ESP-IDF target](firmware/idf/README.md) 
 - Play/pause, previous, next, seek, volume, shuffle, and repeat
 - Spotify Connect output-device picker and playback transfer
 - Up-next queue view, and add-to-queue from any playlist or Liked Songs row
+- Save or remove the playing track or episode from your Spotify library
 - Prefetched playlist and song browsing with cached 20-item pagination
 - Liked Songs browsing and selection
 - Play-only handling for followed playlists whose items Spotify hides
@@ -54,6 +55,11 @@ make provision
 ```
 
 The setup utility asks for the Spotify Client ID, Wi-Fi network, and Wi-Fi password locally. It opens Spotify authorization in the browser, sends only the resulting refresh token and configuration over the selected serial connection, and waits for the ESP32 to confirm storage.
+
+The current authorization also requests permission to save or remove the playing
+track or episode in your Spotify library. If you already provisioned this device, reset it while holding BOOT and
+run `make provision` again to grant that permission. Enter the Client ID and
+Wi-Fi details when prompted.
 
 Detailed instructions are in [docs/setup.md](docs/setup.md). Architecture and security decisions are documented in [docs/architecture.md](docs/architecture.md), and the physical-device test procedure is in [docs/hardware-checklist.md](docs/hardware-checklist.md).
 

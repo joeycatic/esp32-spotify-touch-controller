@@ -70,5 +70,31 @@ std::string queueUriPath(const std::string &uri) {
   return "/me/player/queue?uri=" + urlEncode(uri);
 }
 
+std::string librarySavableUri(const std::string &uri) {
+  static constexpr const char *kPrefixes[] = {"spotify:track:",
+                                              "spotify:episode:"};
+  for (const char *prefix : kPrefixes) {
+    const size_t length = std::char_traits<char>::length(prefix);
+    if (uri.compare(0, length, prefix) != 0) {
+      continue;
+    }
+    const std::string id = uri.substr(length);
+    // A base62 id carries no separator; anything further is a different shape.
+    if (id.empty() || id.find(':') != std::string::npos) {
+      return {};
+    }
+    return uri;
+  }
+  return {};
+}
+
+std::string libraryContainsPath(const std::string &uri) {
+  return "/me/library/contains?uris=" + urlEncode(uri);
+}
+
+std::string libraryItemsPath(const std::string &uri) {
+  return "/me/library?uris=" + urlEncode(uri);
+}
+
 } // namespace spotctl
 

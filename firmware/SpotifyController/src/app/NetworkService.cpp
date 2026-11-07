@@ -1,5 +1,7 @@
 #include "NetworkService.h"
 
+#include "../spotify/SpotifyRequest.h"
+
 #include <WiFi.h>
 #include <time.h>
 
@@ -347,6 +349,22 @@ void NetworkService::pollPlayback() {
   } else if (!snapshot.has_item) {
     artwork_uri_.clear();
   }
+  // /me/library/contains is a second request, so only ask when the item
+  // actually changes. Nothing else can alter the answer except our own toggle,
+  // which updates this cache directly.
+  if (snapshot.has_item) {
+    if (snapshot.item.uri != saved_uri_) {
+      const std::string savable = librarySavableUri(snapshot.item.uri);
+      bool saved = false;
+      saved_state_ = !savable.empty() &&
+                     spotify_.getLibraryContains(savable, saved, error) && saved;
+      saved_uri_ = snapshot.item.uri;
+    }
+    snapshot.saved = saved_state_;
+  } else {
+    saved_uri_.clear();
+    saved_state_ = false;
+  }
   playback_ = snapshot;
   NetworkEvent event{NetworkEventType::Playback};
   event.playback = snapshot;
@@ -494,6 +512,26 @@ void NetworkService::process(const UiCommand &command) {
   case UiCommandType::EnqueueTrack:
     success = spotify_.enqueue(command.uri, error);
     break;
+  case UiCommandType::ToggleSaveTrack: {
+    const std::string savable = librarySavableUri(playback_.item.uri);
+    if (savable.empty()) {
+      error = parseSpotifyError(0, "");
+      error.user_message = "This item cannot be saved to your library";
+      break;
+    }
+    const bool wanted = !saved_state_;
+    success = spotify_.setLibrarySaved(savable, wanted, error);
+    if (success) {
+      saved_state_ = wanted;
+      playback_.saved = wanted;
+      // A dedicated event, so the heart updates now without republishing a
+      // Playback snapshot that carries no artwork.
+      NetworkEvent saved_event{NetworkEventType::SavedState};
+      saved_event.liked = wanted;
+      pushEvent(std::move(saved_event));
+    }
+    break;
+  }
   }
   if (!success) {
     publishFailure(error);

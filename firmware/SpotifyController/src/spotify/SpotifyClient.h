@@ -29,6 +29,8 @@ public:
   bool getSavedTracks(uint32_t offset, SpotifyPage<TrackSummary> &page,
                       SpotifyError &error);
   bool getQueue(std::vector<TrackSummary> &upcoming, SpotifyError &error);
+  bool getLibraryContains(const std::string &uri, bool &saved,
+                          SpotifyError &error);
 
   bool resume(SpotifyError &error);
   bool pause(SpotifyError &error);
@@ -43,6 +45,8 @@ public:
                    SpotifyError &error);
   bool playUris(const std::vector<std::string> &uris, SpotifyError &error);
   bool enqueue(const std::string &uri, SpotifyError &error);
+  bool setLibrarySaved(const std::string &uri, bool saved,
+                       SpotifyError &error);
 
   const std::string &accountId() const { return account_id_; }
 

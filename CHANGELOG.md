@@ -4,11 +4,23 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- View the Spotify up-next queue and add tracks from playlists or Liked Songs.
+- Save or remove the currently playing track or episode from the Spotify library.
+
 ### Changed
 
 - Refine Library browsing on the 7B with a two-column playlist-card layout,
   a dedicated Liked Songs action, clearer track rows, and visible navigation
-  and current-track states. Compact keeps its existing single-column layout.
+  and current-track states.
+- Report the 7B's boot-tuned 120 MHz PSRAM profile accurately; runtime
+  temperature retuning is unsupported on this board.
+
+### Removed
+
+- ESP32-S3-Touch-LCD-2 (240×320) support. The firmware now targets the
+  ESP32-S3-Touch-LCD-7B only.
 
 ## [1.0.0-rc.3] - 2026-09-09
 

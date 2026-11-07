@@ -44,7 +44,11 @@ Provisioning uses the active board's serial `Stream`; it is not tied to global `
 
 ## Spotify Boundaries
 
-The requested scopes are limited to playback state/control, private and collaborative playlist reading, and saved-library reading. No email, profile-writing, playlist-writing, or streaming scope is requested.
+The requested scopes cover playback state/control, private and collaborative
+playlist reading, saved-library reading, and `user-library-modify` for saving or
+removing the currently playing track or episode. Existing installations must
+run provisioning again to grant the added scope. No email, profile-writing,
+playlist-writing, or audio-streaming scope is requested.
 
 Album artwork is center-cropped only if Spotify supplies a non-square image, then resampled to the profile's exact square target without overlays. Tapping Spotify attribution or the wide QR navigation item displays the current Spotify URL.
 

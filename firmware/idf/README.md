@@ -24,13 +24,15 @@ running half the vendor's data cache, which is the cache the bounce-buffer
 refill ISR depends on. `main/sketch.cpp` now asserts every setting in the
 profile, so an incomplete one fails the build instead of shipping.
 
-120 MHz octal PSRAM is experimental in ESP-IDF and is only stable while die
-temperature is stable; Espressif documents random access failures once the chip
-drifts about 20 C from where it powered on. Because this device runs for hours
-and self-heats, `CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR` is
-enabled so the timing point is re-measured at runtime. Waveshare's published
-defaults set only the measurement interval, whose Kconfig `depends on` that
-switch, so it never took effect for their short-running demo.
+120 MHz octal PSRAM is experimental in ESP-IDF. Espressif documents random
+access failures once the chip drifts about 20 C from where it powered on. Do
+**not** enable `CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR` on this
+board: it boot-loops because the timing-tuning initializer rejects this board's
+flash vendor ID before the application starts. The option is deliberately off
+in `sdkconfig.defaults`; Waveshare's measurement interval alone is inert without
+it. Temperature drift remains an open risk. If long-run instability appears
+that a cold start clears, the available mitigation is to lower PSRAM speed to
+80 MHz and repeat the hardware acceptance checks.
 
 ## Build on Windows
 

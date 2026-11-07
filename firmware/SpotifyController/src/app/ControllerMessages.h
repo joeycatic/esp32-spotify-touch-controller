@@ -28,6 +28,7 @@ enum class UiCommandType {
   TransferDevice,
   LoadQueue,
   EnqueueTrack,
+  ToggleSaveTrack,
 };
 
 struct UiCommand {
@@ -48,6 +49,7 @@ enum class NetworkEventType {
   Playlists,
   Tracks,
   Queue,
+  SavedState,
   Devices,
   Artwork,
   Error,

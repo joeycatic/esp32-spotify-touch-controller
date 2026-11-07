@@ -510,6 +510,41 @@ void spotifyRequestEncodingProtectsQueryAndJsonBoundaries() {
             std::string("/me/player/queue?uri=spotify%3Atrack%3A4cOdK2wGLETKBW3PvgPWqQ"));
 }
 
+void libraryContainsReadsTheSingleAnswer() {
+  // /me/library/contains answers with a bare array, one entry per requested URI.
+  bool saved = false;
+  EXPECT_TRUE(spotctl::parseLibraryContains("[true]", saved));
+  EXPECT_TRUE(saved);
+  EXPECT_TRUE(spotctl::parseLibraryContains("[false]", saved));
+  EXPECT_FALSE(saved);
+  // An empty array answers nothing; leaving the previous value in place would
+  // show a heart for the wrong track.
+  saved = true;
+  EXPECT_FALSE(spotctl::parseLibraryContains("[]", saved));
+  EXPECT_FALSE(spotctl::parseLibraryContains("{\"error\":{}}", saved));
+}
+
+void libraryRequestsAddressItemsByUri() {
+  // February 2026 removed /me/tracks/contains and the entity-specific save and
+  // remove endpoints. /me/library takes comma-separated URIs in the query
+  // string, so the colons must be escaped.
+  EXPECT_EQ(spotctl::libraryContainsPath("spotify:track:4cOdK2wGLETKBW3PvgPWqQ"),
+            std::string("/me/library/contains?uris=spotify%3Atrack%3A4cOdK2wGLETKBW3PvgPWqQ"));
+  EXPECT_EQ(spotctl::libraryItemsPath("spotify:track:4cOdK2wGLETKBW3PvgPWqQ"),
+            std::string("/me/library?uris=spotify%3Atrack%3A4cOdK2wGLETKBW3PvgPWqQ"));
+
+  // The generic endpoint saves episodes too, so the control need not hide on a
+  // podcast the way the old track-only endpoint required.
+  EXPECT_EQ(spotctl::librarySavableUri("spotify:track:4cOdK2wGLETKBW3PvgPWqQ"),
+            std::string("spotify:track:4cOdK2wGLETKBW3PvgPWqQ"));
+  EXPECT_EQ(spotctl::librarySavableUri("spotify:episode:512ojhOuo1ktJprKbVcKyQ"),
+            std::string("spotify:episode:512ojhOuo1ktJprKbVcKyQ"));
+  // A local file has no library identity at all.
+  EXPECT_EQ(spotctl::librarySavableUri("spotify:local:a:b:c:1"), std::string(""));
+  EXPECT_EQ(spotctl::librarySavableUri(""), std::string(""));
+  EXPECT_EQ(spotctl::librarySavableUri("spotify:track:"), std::string(""));
+}
+
 void bodylessWriteRequestsMustDeclareZeroContentLength() {
   // Spotify's edge answers 411 Length Required when a PUT or POST arrives with
   // neither Content-Length nor Transfer-Encoding, and the HTML error body then
@@ -709,6 +744,8 @@ int main() {
   queueParserReadsUpcomingTracks();
   deviceAndErrorParsersHandleSparseResponses();
   spotifyRequestEncodingProtectsQueryAndJsonBoundaries();
+  libraryRequestsAddressItemsByUri();
+  libraryContainsReadsTheSingleAnswer();
   bodylessWriteRequestsMustDeclareZeroContentLength();
   parsersPickTheSmallestCoverForRowThumbnails();
   trackRowsCarryTheirOwnThumbnail();

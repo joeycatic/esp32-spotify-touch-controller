@@ -18,6 +18,9 @@ SCOPES = (
     "playlist-read-private",
     "playlist-read-collaborative",
     "user-library-read",
+    # Saving the current track from Now Playing. Adding this invalidates an
+    # existing refresh token's grant, so it requires re-running provisioning.
+    "user-library-modify",
 )
 _VERIFIER_ALPHABET = string.ascii_letters + string.digits + "-._~"
 

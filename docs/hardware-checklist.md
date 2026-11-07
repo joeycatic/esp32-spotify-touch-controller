@@ -466,32 +466,42 @@ full screens, with nothing playing.
 - [x] UART1 / USB TO UART enumerates through the onboard CH343 and `make flash-idf` selects it.
 - [x] Upload and flash verification complete without manually specifying `PORT`.
 - [x] Display survives a warm reset without a power cycle (2026-09-17, after the `pulseLcdReset()` fix).
-- [ ] Display is 1024×600 landscape with correct colors, no drift/flicker/tearing, and stable backlight.
-- [ ] Serial boot log reports `RGB timing: 30 MHz pixel clock, 10-line bounce buffers`. Check the setup screen before Wi-Fi, then leave Now Playing untouched for five minutes with Spotify connected; neither should develop shifted lines or flicker.
-- [ ] Boot log reports `[board] LVGL draw buffer: 1024 x 16 rows, 1 buffer(s), internal RAM`. `PSRAM (degraded)` means the internal allocation failed and the throughput fix is not in effect.
-- [ ] While artwork/thumbnails load, repeatedly drag volume/seek, hold a control, and scroll Library. Watch specifically for a narrow distorted band at the left edge: that is a FIFO underrun clocking a line out late, and it is the residual form of the original whole-picture shift. It is a known, unresolved limitation; see the two-framebuffer result below.
-- [ ] Compare the five-second `[7B] flush ... KB/s copied into PSRAM` line on an idle Now Playing screen against the moment a cover loads. A large drop is PSRAM bus contention; it should no longer coincide with visible tearing.
-- [ ] GT911 reports accurately at all four corners and gestures track the expected direction.
-- [ ] Runtime native USB appears after the expander selects USB; UART1 remains usable for logs/provisioning.
-- [x] `make provision` succeeds after flashing, acknowledges storage, and survives a reset.
+- [x] Display is 1024×600 landscape with correct colors, no drift/flicker/tearing, and stable backlight (user confirmed after cold boot, 2026-11-07).
+- [x] Serial boot log reports `source-built SDK: 120 MHz PSRAM (boot-tuned; no temperature retuning)` and `RGB timing: 30 MHz pixel clock, 10-line bounce buffers` (captured 2026-11-07).
+- [x] Setup screen displayed before Wi-Fi without shifted lines or flicker during BOOT-hold provisioning (user confirmed 2026-11-07).
+- [x] With Spotify playing, Now Playing remained untouched for five minutes without shifted lines or flicker (user confirmed 2026-11-07).
+- [x] Boot log reports `[board] LVGL draw buffer: 1024 x 16 rows, 1 buffer, internal RAM` (captured 2026-11-07). `PSRAM (degraded)` means the internal allocation failed and the throughput fix is not in effect.
+- [x] While artwork/thumbnails loaded, changed tracks, dragged volume/seek, held a control, and scrolled Library without a left-edge band or tearing (user confirmed 2026-11-07).
+- [x] Five-second flush readings stayed about 51–62 MB/s while idle and 50–61 MB/s during artwork/interaction, with no visible tearing (captured 2026-11-07).
+- [x] GT911 reports accurately at all four corners and gestures track the expected direction (user confirmed 2026-11-07).
+- [x] Runtime native USB appears after the expander selects USB; UART1 remains usable for logs/provisioning (user confirmed 2026-11-07).
+- [x] Provisioning acknowledged storage after flashing and again after factory reset; the new library-modify grant was stored (user confirmed 2026-11-07).
 - [x] Serial output contains no Wi-Fi password, authorization code, access token, or refresh token.
 
 ### UI and Spotify
 
-- [ ] Top status bar, 400×400 artwork, player metadata, progress, and 64-pixel controls fit without clipping.
-- [ ] Persistent Now Playing, Library, Devices, Volume, and QR navigation works.
-- [ ] Play/pause, previous, next, seek, volume, shuffle, repeat, device transfer, and QR link work.
-- [ ] Owned/collaborative playlists, play-only playlists, and Liked Songs behave correctly.
-- [ ] Visible 64×64 row thumbnails load incrementally without blocking controls.
-- [ ] Gear diagnostics and four-corner touch test work.
-- [ ] Holding on-screen Reset setup for three seconds erases credentials; releasing early cancels.
-- [ ] Holding BOOT during reset enters provisioning without continuously reading GPIO0 after RGB starts.
+- [x] Top status bar, 400×400 artwork, player metadata, progress, and 64-pixel controls fit without clipping (user confirmed 2026-11-07).
+- [x] Persistent Now Playing, Library, Devices, Volume, and QR navigation works (user confirmed 2026-11-07).
+- [x] Play/pause, previous, next, seek, volume, shuffle, repeat, device transfer, and QR link work (user confirmed 2026-11-07).
+- [x] The library checkmark reflects saved state and toggles a regular track with success feedback; the original library state was restored (user confirmed 2026-11-07).
+- [x] The control saved/removed a podcast episode and stayed hidden for a local file (user confirmed 2026-11-07).
+- [x] Owned/collaborative playlists, play-only playlists, and Liked Songs behave correctly (user confirmed 2026-11-07).
+- [x] Visible 64×64 row thumbnails load incrementally without blocking controls (user confirmed 2026-11-07).
+- [x] Up-next view shows the queue; add-to-queue works from playlist and Liked Songs rows (user confirmed 2026-11-07).
+- [x] Gear diagnostics and four-corner touch test work (user confirmed 2026-11-07).
+- [x] Releasing on-screen Reset setup early cancelled it; a full three-second hold erased setup and restarted to provisioning (user confirmed 2026-11-07).
+- [x] Holding BOOT during reset entered provisioning without continuously reading GPIO0 after RGB started (user confirmed 2026-11-07).
 
 ### Recovery and soak
 
-- [ ] Wi-Fi loss/recovery, expired-token refresh, revoked authorization, and `429 Retry-After` recover correctly.
+- [x] Wi-Fi loss and recovery reconnected to Spotify without a reboot (user confirmed 2026-11-07).
+- [ ] Expired access-token refresh recovers correctly.
+- [ ] Revoked authorization returns to provisioning cleanly.
+- [ ] `429 Retry-After` suspends requests and resumes after the specified delay.
 - [ ] Unknown/touch/display failure paths remain available over sanitized serial recovery.
-- [ ] One-hour playback/library/artwork soak has no reboot, frozen touch, corrupt frame, or unbounded memory loss.
+- [x] One-hour serial/display soak completed 2026-11-07: capture ran for 3600 seconds and recorded 719 display-flush samples (49,907–60,870 KB/s), with no post-boot reset, panic, assertion, or brownout marker. Raw capture is in the ignored local file `build/hardware-acceptance-soak-20261107.log`.
+- [x] During the one-hour Spotify playback soak, periodic Library/artwork navigation remained responsive and the display stayed steady with no flicker, tearing, or shifted lines (user confirmed 2026-11-07).
+- [ ] Heap usage trend during the soak was not captured; verify memory remains stable if this is required for release acceptance.
 
 ## Removed: ESP32-S3-Touch-LCD-2
 

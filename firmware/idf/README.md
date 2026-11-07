@@ -1,20 +1,20 @@
-# Source-built 7B comparison firmware
+# Source-built 7B firmware
 
 This target builds the existing Spotify application with Arduino ESP32 3.3.11
 as a component of ESP-IDF 5.5.5. It rebuilds the SDK and bootloader so the
 Waveshare 7B cache and PSRAM settings actually affect the LCD driver. The normal
 Arduino CLI build still uses its installed precompiled SDK.
 
-This target now runs on the connected 7B with a working display. Idle LVGL
-flush throughput measured 54 MB/s against 14 MB/s from the Arduino CLI build,
-and time spent in flush fell from 83 ms to 22 ms per five-second window -- bus
-time the panel's bounce-buffer refill ISR was previously being starved of.
-Flicker under Spotify load is **not yet verified**, and several changes landed
-together, so no single one is credited. See `docs/hardware-checklist.md`.
+Hardware validation on the connected 7B passed on 2026-11-07: the display stayed
+stable during a one-hour Spotify playback soak, including artwork loading and
+Library interaction. This is a result from one physical unit; remaining recovery
+checks are listed in `docs/hardware-checklist.md`. The source-built target uses
+Waveshare's memory profile: 120 MHz octal PSRAM, 64-byte cache lines, a 64 KB
+data cache and 32 KB instruction cache, and instructions and read-only data in
+PSRAM.
 The application retains its 30 MHz pixel clock, ten-line bounce buffers, and
-single framebuffer. The vendor memory profile selects 120 MHz octal PSRAM,
-64-byte cache lines, a 64 KB data cache and 32 KB instruction cache,
-instructions and read-only data in PSRAM, and performance optimization.
+single framebuffer. The vendor memory profile also enables performance
+optimization.
 
 The first version of this target shipped only part of that. It set the cache
 *line* size and left the cache *sizes* at ESP-IDF's defaults (32 KB data,
@@ -33,6 +33,24 @@ in `sdkconfig.defaults`; Waveshare's measurement interval alone is inert without
 it. Temperature drift remains an open risk. If long-run instability appears
 that a cold start clears, the available mitigation is to lower PSRAM speed to
 80 MHz and repeat the hardware acceptance checks.
+
+## Install ESP-IDF v5.5.5
+
+Install the ESP32-S3 toolchain for the exact ESP-IDF release used by this
+project. Follow Espressif's [ESP-IDF v5.5.5 setup guide](https://docs.espressif.com/projects/esp-idf/en/v5.5.5/esp32s3/get-started/)
+for operating-system prerequisites. On Linux, macOS, or WSL, from the
+repository root:
+
+```bash
+mkdir -p .tools
+git clone --recursive --branch v5.5.5 https://github.com/espressif/esp-idf.git .tools/esp-idf
+export IDF_TOOLS_PATH="$PWD/.tools/idf-tools"
+.tools/esp-idf/install.sh esp32s3
+make build-idf
+```
+
+If the checkout or toolchain is already installed, keep it at the paths shown;
+the build scripts use `.tools/esp-idf` and `.tools/idf-tools` by default.
 
 ## Build on Windows
 

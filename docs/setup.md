@@ -12,25 +12,22 @@ This installs Arduino CLI 1.5.1, Arduino-ESP32 3.3.11, LVGL 8.4.0, Arduino_GFX 1
 
 Arduino_GFX 1.6.7 is intentional. The 1.5.0 version in the original design predates an ESP32 SPI API change and does not compile with Arduino-ESP32 3.3.11.
 
-Verify the software before connecting an account:
+Run the automated checks before connecting an account:
 
 ```bash
 make test
-make build
 ```
 
 ### ESP32-S3-Touch-LCD-7B: use the source-built target
 
-`make build` uses Arduino CLI's precompiled SDK, which fixes the PSRAM clock and
-cache geometry at 80 MHz and 32 KB. The 7B's RGB panel streams its framebuffer
-out of PSRAM inside a DMA refill interrupt, so those settings decide whether the
-picture is stable, and no sketch-level change reaches them. Build and flash the
-7B with the source-built ESP-IDF target instead, which rebuilds the framework
-with Waveshare's memory profile:
+The 7B's RGB panel streams its framebuffer from PSRAM while Wi-Fi, TLS, and
+artwork decoding are active. Use the source-built ESP-IDF target for the board;
+it rebuilds the framework with the memory profile used by the display. Install
+ESP-IDF v5.5.5 and its ESP32-S3 tools as described in the
+[ESP-IDF build guide](../firmware/idf/README.md), then build:
 
 ```bash
 make build-idf
-make flash-idf
 ```
 
 On Windows, use the matching PowerShell scripts:
@@ -42,10 +39,8 @@ On Windows, use the matching PowerShell scripts:
 
 Full setup and prerequisites are in [firmware/idf/README.md](../firmware/idf/README.md).
 
-After flashing, **disconnect all power for ten seconds** before judging the
-display. This board shows a black screen after a warm reset often enough that
-Waveshare's own FAQ answers it with "disconnect and reconnect power"; a single
-post-flash boot is not evidence.
+`make build` remains available as a faster Arduino CLI compile, but use
+`make build-idf` for firmware intended to run on the 7B.
 
 ## 2. Flash the Board
 
@@ -55,15 +50,27 @@ Use the connector labeled **UART1 / USB TO UART**. Set the nearby DIP switch to 
 
 The connector labeled USB is multiplexed with CAN through the board I/O expander and normally does not enumerate before firmware configures it. UART1 has the automatic download circuit and is the reliable flashing connector.
 
+Use the checked source-built flasher:
+
 ```bash
-make flash
+make flash-idf
 ```
+
+Before flashing, read the [ESP-IDF build guide](../firmware/idf/README.md) and
+keep a verified recovery backup. On POSIX, the script requires that backup by
+default; its explicit override is intended only when there is no device state
+to preserve. The Windows script requires the repository's matching verified
+backup.
 
 If more than one serial device is connected, specify it:
 
 ```bash
-PORT=/dev/cu.usbserial-DEVICE make flash
+PORT=/dev/cu.usbserial-DEVICE make flash-idf
 ```
+
+On Windows, use `./scripts/flash-idf.ps1 -Port COM4`. The scripts preserve NVS
+provisioning data and verify the images they write. After flashing, disconnect
+all power for ten seconds before reconnecting UART1.
 
 The host resolver ignores Bluetooth and debug pseudo-ports, recognizes both the CH343 adapter and the board's native USB, and prefers UART1 when both ports exist. It refuses to guess if multiple matching devices remain.
 
@@ -80,7 +87,7 @@ At boot, firmware brings up the I²C bus on GPIO8/9, the `0x24` expander and the
    ```
 
 4. Save the settings.
-5. Add the Spotify account as an allowed development user when required by the dashboard.
+5. Add the Spotify account you will use to the app's allowlist. Development Mode apps allow up to five users, and the app owner needs an active Premium subscription. See [Spotify's Development Mode requirements](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
 6. Copy the application Client ID. A client secret is neither needed nor accepted by this project.
 
 ## 4. Provision over Serial
